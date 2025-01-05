@@ -1,4 +1,12 @@
 
+#ifndef __APA102_H__
+#define __APA102_H__
+
+#ifdef cplusplus
+extern "C" {
+#endif
+
+
 #include "pico.h"
 #include "hardware/pio.h"
 #include "hardware/dma.h"
@@ -48,3 +56,10 @@ class APA102 {
 
         uint32_t get_buffer_size();
 };
+
+#ifdef cplusplus
+}
+#endif
+
+#endif
+

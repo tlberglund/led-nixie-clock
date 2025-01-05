@@ -62,7 +62,6 @@ add_executable(${OUTPUT_NAME}
     src/apa102.cpp
     src/wifi.cpp
     src/network_time.cpp
-    ${PICO_SDK_PATH}/lib/lwip/src/apps/sntp/sntp.c
 )
 
 pico_generate_pio_header(${OUTPUT_NAME} ${CMAKE_CURRENT_LIST_DIR}/src/apa102.pio)
@@ -96,6 +95,8 @@ endif()
 target_link_libraries(${OUTPUT_NAME}
     pico_stdlib
     pico_runtime
+    pico_lwip_http
+    pico_lwip_sntp
     hardware_pio
     hardware_dma
     hardware_rtc

@@ -94,7 +94,7 @@
 #define SLIP_DEBUG                  LWIP_DBG_OFF
 #define DHCP_DEBUG                  LWIP_DBG_OFF
 #define SNTP_DEBUG                  LWIP_DBG_OFF
-
+#define HTTPD_DEBUG                 LWIP_DBG_ON
 
 #define DEFAULT_TCP_RECVMBOX_SIZE 128
 
@@ -109,7 +109,18 @@ void sntpSetTimeSec(uint32_t sec);
 // SNTP updates automatically using a timer managed internall by the LWIP stack
 #define SNTP_UPDATE_DELAY 60*60*1000
 
-// #define CYW43_VDEBUG(...) printf(__VA_ARGS__)
+
+#define LWIP_HTTPD                      1
+#define HTTPD_USE_CUSTOM_FSDATA         0
+#define LWIP_HTTPD_CGI                  1
+#define LWIP_HTTPD_SSI                  0
+#define LWIP_HTTPD_MAX_TAG_NAME_LEN     8
+#define LWIP_HTTPD_MAX_TAG_INSERT_LEN   192
+#define LWIP_HTTPD_DYNAMIC_HEADERS      1
+#define LWIP_HTTPD_SUPPORT_POST         1
+#define LWIP_HTTPD_POST_MANUAL_WND      1
+
+
 #define CYW43_VERBOSE_DEBUG 1
 #define CYW43_DEBUG
 #define CYW43_INFO

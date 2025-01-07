@@ -2,7 +2,7 @@
 #ifndef __HSL_TO_RGB_H__
 #define __HSL_TO_RGB_H__
 
-#ifdef cplusplus
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -22,7 +22,7 @@ typedef struct
 
 void hsl_to_rgb(HSL *hsl, RGB *rgb);
 
-#ifdef cplusplus
+#ifdef __cplusplus
 }
 #endif
 

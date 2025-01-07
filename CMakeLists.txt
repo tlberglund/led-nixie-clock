@@ -62,6 +62,7 @@ add_executable(${OUTPUT_NAME}
     src/apa102.cpp
     src/wifi.cpp
     src/network_time.cpp
+    src/base64.c
 )
 
 pico_generate_pio_header(${OUTPUT_NAME} ${CMAKE_CURRENT_LIST_DIR}/src/apa102.pio)

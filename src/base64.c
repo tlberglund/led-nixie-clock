@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "pico/stdlib.h"
 
 // Base64 decoding table
 static const unsigned char d64[256] = {

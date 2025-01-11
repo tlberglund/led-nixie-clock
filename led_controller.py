@@ -124,11 +124,11 @@ def blue_blobs_on_orange(host):
     BLOB_COLOR = (237, 115, 21)
     BRIGHTNESS = 5
     BLOB_WIDTH = 15
-    TOTAL_TIME = 10
+    TOTAL_TIME = 1
     
     # Calculate movement per frame
     pixels_per_second = animator.num_leds / TOTAL_TIME
-    pixels_per_frame = pixels_per_second / 24  # Since we're running at 24 FPS
+    pixels_per_frame = pixels_per_second / 24
     
     blob_position = -BLOB_WIDTH  # Start blob just outside the strip
     

@@ -128,9 +128,6 @@ err_t httpd_post_receive_data(void *connection, struct pbuf *p) {
         ret = ERR_OK;
     }
 
-    printf("COMPLETE BUFFER:\n");
-    printf("%s\n", led_state_buffer);
-
     pbuf_free(p);
     return ret;
 }
@@ -141,7 +138,6 @@ void httpd_post_finished(void *connection, char *response_uri, u16_t response_ur
     if(current_connection == connection) {
         snprintf(response_uri, response_uri_len, "/");
         printf("POST FINISHED\n");
-        printf("%s\n", led_state_buffer);
 
         size_t led_decoded_len = LED_DECODED_BUFSIZE;
         base64_decode(led_state_buffer, led_decoded_buffer, &led_decoded_len);
@@ -157,6 +153,7 @@ void httpd_post_finished(void *connection, char *response_uri, u16_t response_ur
             green = led_config[2];
             blue = led_config[3];
             led_strip.set_led(n, red, green, blue, brightness);
+            // printf("%d: %02x %02x %02x %02x\n", n, brightness, red, green, blue);
         }
         led_strip.update_strip();
 

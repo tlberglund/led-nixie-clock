@@ -6,7 +6,7 @@ import math
 from datetime import datetime
 from typing import List
 import base64
-
+import requests
 
 class LEDStrip:
     def __init__(self, host, num_leds: int = 60):
@@ -17,7 +17,7 @@ class LEDStrip:
         self.num_leds = num_leds
         self.buffer = bytearray(num_leds * 4)
         
-        self.host = host
+        self.url = f"http://{host}/strip"
 
 
     def set_led(self, index: int, red: int, green: int, blue: int, brightness: int) -> None:
@@ -103,7 +103,9 @@ class LEDStrip:
 
     def send_message(self, message):
         """Send a message and wait for response"""
-        print(base64.b64encode(message))
+        encoded_message = base64.b64encode(message)
+        print(encoded_message)
+        requests.post(self.url, data=base64.b64encode(encoded_message))
         # if not self.sock:
         #     print("Not connected!")
         # else:

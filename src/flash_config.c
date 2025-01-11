@@ -1,3 +1,4 @@
+#include "strip_config.h"
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 
@@ -5,14 +6,6 @@
 #define FLASH_PAGE_SIZE 256
 #define FLASH_SECTOR_SIZE 4096
 
-typedef struct {
-    uint32_t magic;
-    char wifi_ssid[32];
-    char wifi_password[64];
-    bool use_dhcp;
-    uint8_t static_ip[4];
-    uint32_t crc;
-} config_t;
 
 // Standard CRC32 implementation
 uint32_t calculate_crc32(const uint8_t *data, size_t length) {

@@ -1,4 +1,3 @@
-import socket
 import time
 import argparse
 # import schedule
@@ -10,7 +9,7 @@ import base64
 
 
 class LEDStrip:
-    def __init__(self, host, port: int = 4242, num_leds: int = 60):
+    def __init__(self, host, num_leds: int = 60):
         self.frame_time = 1.0/1.0 # not 24
         animation_running = False
 
@@ -19,8 +18,6 @@ class LEDStrip:
         self.buffer = bytearray(num_leds * 4)
         
         self.host = host
-        self.port = port
-        self.sock = None
 
 
     def set_led(self, index: int, red: int, green: int, blue: int, brightness: int) -> None:
@@ -120,7 +117,7 @@ class LEDStrip:
 
 
 def blue_blobs_on_orange(host):
-    animator = LEDStrip(host, 4242, 60)
+    animator = LEDStrip(host, 60)
     
     # Animation parameters
     BG_COLOR = (64, 88, 222)
@@ -173,7 +170,7 @@ def blue_blobs_on_orange(host):
     animator.run_animation(update_frame)
 
 
- 
+
 def main():
     parser = argparse.ArgumentParser(description='TCP Client for Pico')
     parser.add_argument('--host', type=str, required=True, help='Pico IP address')
@@ -183,7 +180,6 @@ def main():
 
 
 
-    # Example usage:
 if __name__ == "__main__":
     main()
 

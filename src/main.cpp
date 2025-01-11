@@ -24,7 +24,7 @@ extern "C" {
 
 
 
-led_strip_config_t config = {
+config_t config = {
     MAGIC_NUMBER,
     WIFI_SSID,
     WIFI_PASSWORD,
@@ -43,7 +43,7 @@ led_strip_config_t config = {
 WifiConnection& wifi = WifiConnection::getInstance();
 NetworkTime& network_time = NetworkTime::getInstance();
 
-APA102 led_strip(50);
+APA102 led_strip(config.strip_length);
 
 static TaskHandle_t led_task_handle;
 #define LED_STATE_BUFSIZE 1000
@@ -74,16 +74,6 @@ err_t httpd_post_begin(void *connection,
                        char *response_uri,
                        u16_t response_uri_len, 
                        u8_t *post_auto_wnd) {
-
-    printf("httpd_post_begin called with parameters:\n");
-    printf("   connection: %p\n", connection);
-    printf("   uri: %s\n", uri);
-    printf("   content_len: %d\n", content_len);
-    printf("   response_uri: %s\n", response_uri);
-    printf("   response_uri_len: %d\n", response_uri_len);
-    printf("   post_auto_wnd: %d\n", *post_auto_wnd);
-    printf("   http_request_len: %d\n", http_request_len);
-    printf("   http_request:\n%s\n", http_request);
 
     if(memcmp(uri, "/strip", 6) == 0 && current_connection != connection) {
         current_connection = connection;

@@ -123,7 +123,6 @@ add_script_search_dir $OPENOCD_SCRIPTS
 source [find interface/cmsis-dap.cfg]
 source [find target/$BOARD_TYPE.cfg]
 
-$CORE_CONFIG
 
 adapter speed 5000;
 $OPENOCD_CFG

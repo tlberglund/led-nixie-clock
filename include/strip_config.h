@@ -21,7 +21,7 @@ typedef struct {
     uint8_t netmask[4];
     uint32_t strip_length;
     uint32_t crc;
-} led_strip_config_t;
+} config_t;
 
 #ifdef cplusplus
 }

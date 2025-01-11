@@ -10,7 +10,7 @@ import requests
 
 class LEDStrip:
     def __init__(self, host, num_leds: int = 60):
-        self.frame_time = 1.0/1.0 # not 24
+        self.frame_time = 1.0/24
         animation_running = False
 
         # Setup LED array
@@ -105,7 +105,7 @@ class LEDStrip:
         """Send a message and wait for response"""
         encoded_message = base64.b64encode(message)
         print(encoded_message)
-        requests.post(self.url, data=base64.b64encode(encoded_message))
+        requests.post(self.url, data=encoded_message)
         # if not self.sock:
         #     print("Not connected!")
         # else:

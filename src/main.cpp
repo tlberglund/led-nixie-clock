@@ -4,26 +4,40 @@
 #include "wifi.h"
 #include "network_time.h"
 #include "apa102.h"
+#include "strip_config.h"
+#include "pico_led.h"
+#include "base64.h"
 
 extern "C" {
-    #include "pico_led.h"
+
+    #include "pico/cyw43_arch.h"
+
     #include "FreeRTOSConfig.h"
     #include "FreeRTOS.h"
     #include "task.h"
     #include "queue.h"
     #include "timers.h"
-    #include "hardware/rtc.h"
-    #include "lwip/tcp.h"
-    #include "lwip/err.h"
-    #include "lwip/pbuf.h"
-    #include "lwip/api.h"
 
-    #include "pico/cyw43_arch.h"
+    #include "lwip/apps/fs.h"
+    #include "lwip/apps/httpd.h"
 }
 
-#define TCP_PORT 4242
-#define MAX_RETRIES 5
-#define BUFFER_SIZE 1024
+
+
+led_strip_config_t config = {
+    MAGIC_NUMBER,
+    WIFI_SSID,
+    WIFI_PASSWORD,
+    {0, 0, 0},       // padding
+    true,            // use DHCP
+    {0, 0, 0},       // padding
+    false,           // first LED is at the start of the strip
+    {0, 0, 0, 0},    // static IP address
+    {0, 0, 0, 0},    // static gateway address
+    {0, 0, 0, 0},    // static netmask
+    60,              // strip length
+    0x00000000       // CRC (not used right now)
+};
 
 
 WifiConnection& wifi = WifiConnection::getInstance();
@@ -31,44 +45,123 @@ NetworkTime& network_time = NetworkTime::getInstance();
 
 APA102 led_strip(50);
 
+static TaskHandle_t led_task_handle;
+#define LED_STATE_BUFSIZE 1000
+#define LED_DECODED_BUFSIZE 500
+static uint8_t led_state_buffer[LED_STATE_BUFSIZE];
+static uint8_t led_decoded_buffer[LED_DECODED_BUFSIZE];
+static uint8_t *led_state_current;
+static uint16_t led_state_len;
 
-typedef struct {
-    struct tcp_pcb *pcb;
-    uint8_t buffer[BUFFER_SIZE];
-    uint16_t buffer_len;
-} tcp_server_t;
+static void dump_buffer(uint8_t *buffer, uint16_t len) {
+    for(int n = 0; n < len; n++) {
+        printf("%02x ", buffer[n]);
+        if((n + 1) % 16 == 0) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+}
 
-static void tcp_server_close(tcp_server_t *state);
 
+static void *current_connection;
 
-static err_t tcp_server_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *packet_buf, err_t err) {
-    tcp_server_t *state = (tcp_server_t*)arg;
-    
-    printf("IN tcp_server_recv\n");
+err_t httpd_post_begin(void *connection, 
+                       const char *uri, 
+                       const char *http_request,
+                       u16_t http_request_len, 
+                       int content_len, 
+                       char *response_uri,
+                       u16_t response_uri_len, 
+                       u8_t *post_auto_wnd) {
 
-    if(!packet_buf) {
-        tcp_server_close(state);
+    printf("httpd_post_begin called with parameters:\n");
+    printf("   connection: %p\n", connection);
+    printf("   uri: %s\n", uri);
+    printf("   content_len: %d\n", content_len);
+    printf("   response_uri: %s\n", response_uri);
+    printf("   response_uri_len: %d\n", response_uri_len);
+    printf("   post_auto_wnd: %d\n", *post_auto_wnd);
+    printf("   http_request_len: %d\n", http_request_len);
+    printf("   http_request:\n%s\n", http_request);
+
+    if(memcmp(uri, "/strip", 6) == 0 && current_connection != connection) {
+        current_connection = connection;
+        led_state_len = 0;
+        led_state_current = led_state_buffer;
+        snprintf(response_uri, response_uri_len, "/");
+        *post_auto_wnd = 1;
         return ERR_OK;
     }
-    
-    if(packet_buf->tot_len > 0) {
-        printf("RX %4d BYTES\n", packet_buf->tot_len);
+    return ERR_VAL;
+}
 
-        // Copy the received data into our buffer
-        uint16_t copy_len = MIN(packet_buf->tot_len, BUFFER_SIZE - state->buffer_len);
-        printf("COPYING %d BYTES\n", copy_len);
-        pbuf_copy_partial(packet_buf, state->buffer + state->buffer_len, copy_len, 0);
-        state->buffer_len += copy_len;
-        printf("BUFFER LEN %d BYTES\n", state->buffer_len);
+// Return a value for a parameter
+char *httpd_param_value(struct pbuf *p, 
+                        const char *param_name, 
+                        char *value_buf, 
+                        size_t value_buf_len) {
+    size_t param_len = strlen(param_name);
+    u16_t param_pos = pbuf_memfind(p, param_name, param_len, 0);
+    if(param_pos != 0xffff) {
+        u16_t param_value_pos = param_pos + param_len;
+        u16_t param_value_len = 0;
+        u16_t tmp = pbuf_memfind(p, "&", 1, param_value_pos);
+        if(tmp != 0xffff) {
+            param_value_len = tmp - param_value_pos;
+        } else {
+            param_value_len = p->tot_len - param_value_pos;
+        }
+        if(param_value_len > 0 && param_value_len < value_buf_len) {
+            char *result = (char *)pbuf_get_contiguous(p, value_buf, value_buf_len, param_value_len, param_value_pos);
+            if(result) {
+                result[param_value_len] = 0;
+                return result;
+            }
+        }
+    }
+    return NULL;
+}
+
+
+err_t httpd_post_receive_data(void *connection, struct pbuf *p) {
+    err_t ret = ERR_VAL;
+    LWIP_ASSERT("NULL pbuf", p != NULL);
+    printf("POST RX len=%d, tot_len=%d\n", p->len, p->tot_len);
+    printf("%s\n", p->payload);
+
+    if(current_connection == connection && 
+       (p->len + led_state_len) < LED_STATE_BUFSIZE) {
+        memcpy(led_state_current, p->payload, p->len);
+        led_state_current += p->len;
+        printf("%s\n", led_state_buffer);
+        ret = ERR_OK;
     }
 
-    // When we've received a full strip's worth of data (TCP may split this up over multiple transmissions)
-    if(state->buffer_len == led_strip.get_strip_len() * 4) {
-        printf("COMPLETE BUFFER; UPDATING STRIP\n");
+    printf("COMPLETE BUFFER:\n");
+    printf("%s\n", led_state_buffer);
+
+    pbuf_free(p);
+    return ret;
+}
+
+
+void httpd_post_finished(void *connection, char *response_uri, u16_t response_uri_len) {
+    snprintf(response_uri, response_uri_len, "/error.html");
+    if(current_connection == connection) {
+        snprintf(response_uri, response_uri_len, "/");
+        printf("POST FINISHED\n");
+        printf("%s\n", led_state_buffer);
+
+        size_t led_decoded_len = LED_DECODED_BUFSIZE;
+        base64_decode(led_state_buffer, led_decoded_buffer, &led_decoded_len);
+
+        printf("DECODED %d bytes for %d LEDs\n", led_decoded_len, led_strip.get_strip_len());
+
         for(int n = 0; n < led_strip.get_strip_len(); n++) {
             uint8_t brightness, red, green, blue;
             uint8_t *led_config;
-            led_config = &state->buffer[n * 4];
+            led_config = &led_decoded_buffer[n * 4];
             brightness = led_config[0];
             red = led_config[1];
             green = led_config[2];
@@ -77,115 +170,27 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *packet
         }
         led_strip.update_strip();
 
-        // Clear the buffer after processing
-        state->buffer_len = 0;
+        // Turn Base64 into binary and send it to the APA102 strip
     }
-    
-    // Free the received pbuf
-    pbuf_free(packet_buf);
-
-    printf("DONE tcp_server_recv\n");
-    
-    return ERR_OK;
+    current_connection = NULL;
 }
 
 
-static void tcp_server_err(void *arg, err_t err) {
-    tcp_server_t *state = (tcp_server_t*)arg;
-    printf("IN tcp_server_err\n");
-    if(err != ERR_ABRT) {
-        tcp_server_close(state);
-    }
-}
+// static const char *cgi_handler_root(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
 
-
-static err_t tcp_server_accept(void *arg, struct tcp_pcb *client_pcb, err_t err) {
-    tcp_server_t *state = (tcp_server_t*)arg;
-    
-    printf("IN tcp_server_accept\n");
-    if(err != ERR_OK || client_pcb == NULL) {
-        return ERR_VAL;
-    }
-    
-    // Store PCB and set callbacks
-    state->pcb = client_pcb;
-    tcp_arg(client_pcb, state);
-    tcp_recv(client_pcb, tcp_server_recv);
-    tcp_err(client_pcb, tcp_server_err);
-    
-    return ERR_OK;
-}
-
-
-tcp_server_t* tcp_server_init(void) {
-    tcp_server_t *state = (tcp_server_t *)calloc(1, sizeof(tcp_server_t));
-    if(!state) {
-        return NULL;
-    }
-    
-    struct tcp_pcb *pcb = tcp_new_ip_type(IPADDR_TYPE_ANY);
-    if(!pcb) {
-        free(state);
-        return NULL;
-    }
-    
-    err_t err = tcp_bind(pcb, IP_ANY_TYPE, TCP_PORT);
-    if(err != ERR_OK) {
-        free(state);
-        return NULL;
-    }
-    
-    state->pcb = tcp_listen_with_backlog(pcb, 1);
-    if(!state->pcb) {
-        free(state);
-        return NULL;
-    }
-    
-    tcp_arg(state->pcb, state);
-    tcp_accept(state->pcb, tcp_server_accept);
-    
-    return state;
-}
-
-
-static void tcp_server_close(tcp_server_t *state) {
-    printf("IN tcp_server_close() \n ");
-    if(state->pcb != NULL) {
-        tcp_arg(state->pcb, NULL);
-        tcp_close(state->pcb);
-        state->pcb = NULL;
-    }
-}
-
-
-// void tcp_server_task(void *pvParameters) {
-//     tcp_server_t *state = tcp_server_init();
-//     if(!state) {
-//         printf("Failed to initialize TCP server\n");
-//         vTaskDelete(NULL);
-//         return;
+//     printf("cgi_handler_root index=%d, numParams=%d\n", iIndex, iNumParams);
+//     for(int n = 0; n < iNumParams; n++) {
+//         printf("%s = %s\n", n, pcParam[n], pcValue[n]);
 //     }
-    
-//     for(;;) {
-//         // The TCP/IP stack will handle incoming connections and callbacks
-//         // We just need to give other tasks a chance to run
-//         vTaskDelay(pdMS_TO_TICKS(10));
-//     }
+
+//     return "PICO OK";
 // }
 
 
-// static void vPointlessTask(void *pvParameters) {
-//     uint32_t counter = 0;
+// static tCGI cgi_handlers[] = {
+//     { "/", cgi_handler_root }
+// };
 
-//     for(;;) {
-//         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-//         counter++;
-//     }
-// }
-
-
-static TaskHandle_t led_task_handle;
 
 void led_task(void *pvParameters) {
     WifiConnection *wifi = (WifiConnection *)pvParameters;
@@ -196,17 +201,13 @@ void led_task(void *pvParameters) {
 
     printf("LED TASK WIFI IS UP\n");
 
-    tcp_server_t *state = tcp_server_init();
-    if(!state) {
-        printf("FAILED TO INITIALIZE TCP SERVER\n");
-        vTaskDelete(NULL);
-    }
+    // http_set_cgi_handlers(cgi_handlers, LWIP_ARRAYSIZE(cgi_handlers));
+    httpd_init();
 
     for(;;) {
         vTaskDelay(1000);
     }
 }
-
 
 
 void launch() {

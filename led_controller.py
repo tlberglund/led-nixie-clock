@@ -1,11 +1,12 @@
 import socket
 import time
 import argparse
-import schedule
+# import schedule
 import time
 import math
 from datetime import datetime
 from typing import List
+import base64
 
 
 class LEDStrip:
@@ -102,55 +103,20 @@ class LEDStrip:
         """Clear the strip and close SPI connection"""
         self.clear()
         self.update()
-        self.spi.close()
 
-    def connect(self):
-        """Establish connection to the Pico"""
-        try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-            # More aggressive TCP settings
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            
-            # Longer timeout
-            self.sock.settimeout(10)
-            
-            print(f"Attempting to connect to {self.host}:{self.port}...")
-            self.sock.connect((self.host, self.port))
-            
-            # Once connected, set to blocking mode with no timeout
-            self.sock.settimeout(None)
-            
-            print(f"Connected to {self.host}:{self.port}")
-            return True
-        except Exception as e:
-            print(f"Socket error: {e}")
-            if hasattr(e, 'errno'):
-                print(f"Error number: {e.errno}")
-            return False
-        
     def send_message(self, message):
         """Send a message and wait for response"""
-        if not self.sock:
-            print("Not connected!")
-        else:
-            try:
-                # Send the message
-                self.sock.send(message)
-                print(f"Sent: {message}")            
-            except Exception as e:
-                print(f"Error in communication: {e}")
+        print(base64.b64encode(message))
+        # if not self.sock:
+        #     print("Not connected!")
+        # else:
+        #     try:
+        #         # Send the message
+        #         self.sock.send(message)
+        #         print(f"Sent: {message}")            
+        #     except Exception as e:
+        #         print(f"Error in communication: {e}")
     
-    def close(self):
-        """Close the connection"""
-        if self.sock:
-            self.sock.close()
-            self.sock = None
-            print("Connection closed")
-
-
 
 
 def blue_blobs_on_orange(host):
@@ -169,8 +135,6 @@ def blue_blobs_on_orange(host):
     
     blob_position = -BLOB_WIDTH  # Start blob just outside the strip
     
-
-    animator.connect()
 
     def gaussian(x, mu, sig):
         """Calculate Gaussian distribution value at point x"""

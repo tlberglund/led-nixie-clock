@@ -42,12 +42,12 @@ config_t config = {
 WifiConnection& wifi = WifiConnection::getInstance();
 NetworkTime& network_time = NetworkTime::getInstance();
 
-APA102 leds_hours_10(DIGIT_LED_COUNT, 12, 13, pio0, 0);
-APA102 leds_hours_1(DIGIT_LED_COUNT, 10, 11, pio0, 1);
-APA102 leds_minutes_10(DIGIT_LED_COUNT, 8, 9, pio0, 2);
-APA102 leds_minutes_1(DIGIT_LED_COUNT, 6, 7, pio0, 3);
-APA102 leds_seconds_10(DIGIT_LED_COUNT, 4, 5, pio1, 0);
-APA102 leds_seconds_1(DIGIT_LED_COUNT, 2, 3, pio1, 1);
+APA102 leds_hours_10(DIGIT_ROW_WIDTH * 3, 12, 13, pio0, 0);
+APA102 leds_hours_1(DIGIT_ROW_WIDTH * 10, 10, 11, pio0, 1);
+APA102 leds_minutes_10(DIGIT_ROW_WIDTH * 6, 8, 9, pio0, 2);
+APA102 leds_minutes_1(DIGIT_ROW_WIDTH * 10, 6, 7, pio0, 3);
+APA102 leds_seconds_10(DIGIT_ROW_WIDTH * 6, 4, 5, pio1, 0);
+APA102 leds_seconds_1(DIGIT_ROW_WIDTH * 10, 2, 3, pio1, 1);
 
 static TaskHandle_t led_task_handle;
 
@@ -65,8 +65,9 @@ APA102_LED digit_pattern[DIGIT_ROW_WIDTH * NUM_DIGITS];
 void set_digit(APA102 *strip, APA102_LED *pattern, uint8_t digit) {
     strip->clear_strip();
     for(uint8_t n = 0; n < DIGIT_ROW_WIDTH; n++) {
-        strip->set_led(n + (digit * DIGIT_ROW_WIDTH), pattern[n]);
+        strip->set_led(n + (digit * DIGIT_ROW_WIDTH), pattern[n].red, pattern[n].green, pattern[n].blue, pattern[n].brightness);
     }
+    strip->update_strip();
 }
 
 
@@ -88,8 +89,8 @@ void led_task(void *pvParameters) {
     // Lame digit pattern for now
     for(uint8_t n = 0; n < DIGIT_ROW_WIDTH * NUM_DIGITS; n++) {
         digit_pattern[n].red = 255;
-        digit_pattern[n].green = 255;
-        digit_pattern[n].blue = 255;
+        digit_pattern[n].green = 0;
+        digit_pattern[n].blue = 0;
         digit_pattern[n].brightness = 2;
     }
 
@@ -107,12 +108,15 @@ void led_task(void *pvParameters) {
         seconds_10 = currentTime.tm_sec / 10;
         seconds_1 = currentTime.tm_sec % 10;
 
-        set_digit(&leds_hours_10,   digit_pattern + (DIGIT_ROW_WIDTH * 0 * sizeof(APA102_LED)), hours_10);
-        set_digit(&leds_hours_1,    digit_pattern + (DIGIT_ROW_WIDTH * 1 * sizeof(APA102_LED)), hours_1);
-        set_digit(&leds_minutes_10, digit_pattern + (DIGIT_ROW_WIDTH * 2 * sizeof(APA102_LED)), minutes_10);
-        set_digit(&leds_minutes_1,  digit_pattern + (DIGIT_ROW_WIDTH * 3 * sizeof(APA102_LED)), minutes_1);
-        set_digit(&leds_seconds_10, digit_pattern + (DIGIT_ROW_WIDTH * 4 * sizeof(APA102_LED)), seconds_10);
-        set_digit(&leds_seconds_1,  digit_pattern + (DIGIT_ROW_WIDTH * 5 * sizeof(APA102_LED)), seconds_1);
+
+        // printf("SECONDS %d %d\n", seconds_10, seconds_1);
+
+        set_digit(&leds_hours_10,   &digit_pattern[DIGIT_ROW_WIDTH * 0], hours_10);
+        set_digit(&leds_hours_1,    &digit_pattern[DIGIT_ROW_WIDTH * 1], hours_1);
+        set_digit(&leds_minutes_10, &digit_pattern[DIGIT_ROW_WIDTH * 2], minutes_10);
+        set_digit(&leds_minutes_1,  &digit_pattern[DIGIT_ROW_WIDTH * 3], minutes_1);
+        set_digit(&leds_seconds_10, &digit_pattern[DIGIT_ROW_WIDTH * 4], seconds_10);
+        set_digit(&leds_seconds_1,  &digit_pattern[DIGIT_ROW_WIDTH * 5], seconds_1);
 
         frame++;
     }

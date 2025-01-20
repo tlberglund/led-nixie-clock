@@ -41,7 +41,7 @@ APA102::APA102(uint strip_len, uint8_t clk_pin, uint8_t din_pin, pio_hw_t *pio, 
 
 
 void APA102::clear_strip() {
-    for(int i = 1; i < strip_len; i++) {
+    for(int i = 1; i < strip_len + 1; i++) {
         strip[i].unused = 0x7;   // datasheet says these bits should be all ones
         strip[i].brightness = 0;
         strip[i].red = 0;

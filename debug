@@ -24,9 +24,9 @@
 
 OPENOCD_CMD="$PICO_SDK_PATH/openocd/0.12.0+dev/openocd"
 OPENOCD_SCRIPTS=$PICO_SDK_PATH/openocd/0.12.0+dev/scripts
-FIRMWARE_IMAGE_FILE="../build/strip_driver.elf"
+FIRMWARE_IMAGE_FILE="build/nixie_clock.elf"
 OPENOCD_CFG=""
-CMAKE_FILE="../CMakeLists.txt"
+CMAKE_FILE="CMakeLists.txt"
 BOARD_TYPE=""
 
 
@@ -54,6 +54,9 @@ case "$PICO_BOARD_VALUE" in
         BOARD_TYPE="rp2040"
         ;;
     pico2)
+        BOARD_TYPE="rp2350"
+        ;;
+    pico2_w)
         BOARD_TYPE="rp2350"
         ;;
     *)

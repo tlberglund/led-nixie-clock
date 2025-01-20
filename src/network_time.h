@@ -30,6 +30,7 @@ class NetworkTime {
             instance.sntp_add_server("2.us.pool.ntp.org");
             instance.sntp_add_server("3.us.pool.ntp.org");
             instance.wifi = NULL;
+            instance.aon_is_running = false;
 
             return instance;
         }
@@ -42,6 +43,7 @@ class NetworkTime {
         int sntp_server_count;
         int32_t sntp_timezone_minutes_offset;
         WifiConnection *wifi;
+        bool aon_is_running;
 };
 
 #endif

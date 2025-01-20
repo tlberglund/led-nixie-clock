@@ -67,18 +67,25 @@ void APA102::update_strip() {
 }
 
 
-void APA102::set_led(uint16_t led, uint8_t red, uint8_t green, uint8_t blue) {
-    set_led(led, red, green, blue, max_brightness);
+void APA102::set_led(uint16_t index, APA102_LED led) {
+    if(index < strip_len) {
+        strip[index + 1] = led;
+    }
 }
 
 
-void APA102::set_led(uint16_t led, uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness) {
-    if(led < strip_len) {
-        strip[led + 1].unused = 7;
-        strip[led + 1].brightness = brightness;
-        strip[led + 1].red = red;
-        strip[led + 1].green = green;
-        strip[led + 1].blue = blue;
+void APA102::set_led(uint16_t index, uint8_t red, uint8_t green, uint8_t blue) {
+    set_led(index, red, green, blue, max_brightness);
+}
+
+
+void APA102::set_led(uint16_t index, uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness) {
+    if(index < strip_len) {
+        strip[index + 1].unused = 7;
+        strip[index + 1].brightness = brightness;
+        strip[index + 1].red = red;
+        strip[index + 1].green = green;
+        strip[index + 1].blue = blue;
     }
 }
 

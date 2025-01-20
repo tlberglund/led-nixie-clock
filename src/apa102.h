@@ -26,8 +26,9 @@ class APA102 {
 
         APA102_LED *get_strip() { return (strip); };
         uint32_t get_strip_len() { return (strip_len); };
-        void set_led(uint16_t led, uint8_t red, uint8_t green, uint8_t blue);
-        void set_led(uint16_t led, uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness);
+        void set_led(uint16_t index, APA102_LED led);
+        void set_led(uint16_t index, uint8_t red, uint8_t green, uint8_t blue);
+        void set_led(uint16_t index, uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness);
         void update_strip();
         void clear_strip();
 

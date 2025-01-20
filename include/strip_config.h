@@ -19,7 +19,8 @@ typedef struct {
     uint8_t ip[4];
     uint8_t gateway[4];
     uint8_t netmask[4];
-    uint32_t strip_length;
+    uint8_t unused_3[3];
+    bool use_24_hour_mode;
     uint32_t crc;
 } config_t;
 

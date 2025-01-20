@@ -3,7 +3,7 @@
 #include <string.h>
 #include "network_time.h"
 #include "pico/util/datetime.h"
-#include "hardware/rtc.h"
+#include "pico/aon_timer.h"
 #include "lwip/apps/sntp.h"
 
 
@@ -53,7 +53,7 @@ void NetworkTime::sntp_set_timezone(int offsetHours, int offsetMinutes) {
 }
 
 
-/***
+/**
  * Add SNTP server - can call to add multiple servers
  * @param server - string name of server. Should remain in scope
  */
@@ -62,45 +62,42 @@ void NetworkTime::sntp_add_server(const char *server){
 }
 
 
-/***
- * Start syncing Pico time with SNTP
+/**
+ * Call the LWIP Simple Network Time Protocol (SNTP) library to start the clock
+ * running, literally. See the NetworkTime::init() method for more details on 
+ * what's going on behind the scenes.
  */
 void NetworkTime::sntp_start_sync() {
-    rtc_init();
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_init();
 }
 
 
-/***
+/**
  * Actually sets the Pico real-time clock (RTC) with a specific time. In the
  * case of this class, that time should be coming from an NTP server. See the
  * sntpSetTimeSec() function (declared in this file but not a part of the
  * NetworkTime class) for how this call is made.
  */
 void NetworkTime::set_time_in_seconds(uint32_t sec) {
-    datetime_t date;
-    struct tm *timeinfo;
+    struct timespec ts;
+    uint64_t ms = (sec + (60 * sntp_timezone_minutes_offset)) * 1000;
 
-    time_t t = sec + (60 * sntp_timezone_minutes_offset);
+    printf("SETTING TIME TO %lu\n", ms);
 
-    timeinfo = gmtime(&t);
+    ms_to_timespec(ms, &ts);
 
-    memset(&date, 0, sizeof(date));
-    date.sec = timeinfo->tm_sec;
-    date.min = timeinfo->tm_min;
-    date.hour = timeinfo->tm_hour;
-    date.day = timeinfo->tm_mday;
-    date.month = timeinfo->tm_mon + 1;
-    date.year = timeinfo->tm_year + 1900;
-
-    rtc_set_datetime(&date);
+    if(aon_is_running) {
+        aon_timer_set_time(&ts);
+    }
+    else {
+        aon_timer_start(&ts);
+        aon_is_running = true;
+    }
 }
 
 
 void NetworkTime::time_task(void *params) {
-    datetime_t d;
-
     printf("NTP TASK STARTED\n");
     NetworkTime *time = (NetworkTime *)params;
     WifiConnection *wifi = time->wifi;

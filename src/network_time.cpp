@@ -48,8 +48,10 @@ void NetworkTime::init()
  * @param offsetMinutes - for timezones that use odd mintes you can add or sub
  * additional minutes
  */
-void NetworkTime::sntp_set_timezone(int offsetHours, int offsetMinutes) {
-    sntp_timezone_minutes_offset = (offsetHours * 60) + offsetMinutes;
+void NetworkTime::set_timezone(int offsetHours, int offsetMinutes) {
+    printf("TIMEZONE OFFSET: %d hrs, %d mins\n", offsetHours, offsetMinutes);
+    timezone_offset_minutes = (offsetHours * 60) + offsetMinutes;
+    printf("TIMEZONE OFFSET: %d mins\n", timezone_offset_minutes);
 }
 
 
@@ -57,7 +59,7 @@ void NetworkTime::sntp_set_timezone(int offsetHours, int offsetMinutes) {
  * Add SNTP server - can call to add multiple servers
  * @param server - string name of server. Should remain in scope
  */
-void NetworkTime::sntp_add_server(const char *server){
+void NetworkTime::add_sntp_server(const char *server){
     sntp_setservername(sntp_server_count++, server);
 }
 
@@ -67,7 +69,7 @@ void NetworkTime::sntp_add_server(const char *server){
  * running, literally. See the NetworkTime::init() method for more details on 
  * what's going on behind the scenes.
  */
-void NetworkTime::sntp_start_sync() {
+void NetworkTime::start_sntp_sync() {
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_init();
 }
@@ -81,16 +83,27 @@ void NetworkTime::sntp_start_sync() {
  */
 void NetworkTime::set_time_in_seconds(uint32_t sec) {
     struct timespec ts;
-    uint64_t ms = (sec + (60 * sntp_timezone_minutes_offset)) * 1000;
+    struct tm tim;
 
-    printf("SETTING TIME TO %lu\n", ms);
+    printf("RAW TIME:        %lu\n", sec);
+    printf("TIMEZONE OFFSET: %d\n", timezone_offset_minutes);
 
-    ms_to_timespec(ms, &ts);
+    //
+    // Handling of 64-bit integers seems suspect. ms_to_timespec() takes a
+    // uint64_t argument and doesn't seem to work, and %llu doesn't give
+    // reliable results∑ in printf() either. So, fine...I'll have to do it
+    // myself.
+    //
+    ts.tv_sec = sec + (timezone_offset_minutes * 60);
+    ts.tv_nsec = 0;
+
+    printf("TIMESPEC: %lu %lu\n", ts.tv_sec, ts.tv_nsec);
 
     if(aon_is_running) {
         aon_timer_set_time(&ts);
     }
     else {
+        printf("STARTING AON TIMER\n");
         aon_timer_start(&ts);
         aon_is_running = true;
     }
@@ -106,7 +119,9 @@ void NetworkTime::time_task(void *params) {
     wifi->wait_for_wifi_init();
     printf("NTP TASK WIFI INIT COMPLETE\n");
 
-    time->sntp_start_sync();
+    printf("TIMEZONE OFFSET: %d\n", time->timezone_offset_minutes);
+
+    time->start_sntp_sync();
 
     printf("NTP SYNC RUNNING; EXITING NTP TASK\n");
 

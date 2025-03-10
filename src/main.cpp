@@ -4,6 +4,7 @@
 #include "wifi.h"
 #include "network_time.h"
 #include "apa102.h"
+#include "clock.h"
 #include "strip_config.h"
 #include "pico/aon_timer.h"
 
@@ -17,138 +18,192 @@ extern "C" {
 }
 
 
-
 config_t config = {
     MAGIC_NUMBER,
     WIFI_SSID,
     WIFI_PASSWORD,
-    {0, 0, 0},       // padding
+    -480,            // TZ offset (minutes)
     true,            // use DHCP
-    {0, 0, 0},       // padding
-    false,           // first LED is at the start of the strip
+    true,            // 24-hour clock
     {0, 0, 0, 0},    // static IP address
     {0, 0, 0, 0},    // static gateway address
     {0, 0, 0, 0},    // static netmask
-    {0, 0, 0},       // padding
-    false,           // 24-hour clock
     0x00000000       // CRC (not used right now)
 };
 
 
-#define DIGIT_LED_COUNT 50
-#define DIGIT_ROW_WIDTH 5
-#define NUM_DIGITS 6
+#define GPIO_LAMP_TEST 16
+
 
 WifiConnection& wifi = WifiConnection::getInstance();
 NetworkTime& network_time = NetworkTime::getInstance();
+Clock nixie_clock;
 
-APA102 leds_hours_10(DIGIT_ROW_WIDTH * 3, 12, 13, pio0, 0);
-APA102 leds_hours_1(DIGIT_ROW_WIDTH * 10, 10, 11, pio0, 1);
-APA102 leds_minutes_10(DIGIT_ROW_WIDTH * 6, 8, 9, pio0, 2);
-APA102 leds_minutes_1(DIGIT_ROW_WIDTH * 10, 6, 7, pio0, 3);
-APA102 leds_seconds_10(DIGIT_ROW_WIDTH * 6, 4, 5, pio1, 0);
-APA102 leds_seconds_1(DIGIT_ROW_WIDTH * 10, 2, 3, pio1, 1);
+APA102_LED digit_pattern[NUM_DIGITS][DIGIT_ROW_WIDTH];
 
 static TaskHandle_t led_task_handle;
-
 TimerHandle_t xFrameTimer;
 TaskHandle_t xFrameTask;
 
+
+
+#define SHORT_FLICKER_FRAME_COUNT 12
+#define LONG_FLICKER_FRAME_COUNT 25
+float short_flicker[] = {0.95, 0.75, 0.90, 0.20, 0.60, 0.10, 0.00, 0.05, 0.70, 0.85, 0.40, 0.95};
+float long_flicker[] = {0.95, 0.90, 0.85, 0.80, 0.70, 0.30, 0.10, 0.05, 0.00, 0.00, 0.02, 0.50, 0.30, 0.10, 0.40, 0.60, 0.70, 0.65, 0.30, 0.10, 0.50, 0.80, 0.85, 0.90, 0.95};
+typedef struct flicker {
+   uint64_t last_flicker_time;
+   uint64_t next_flicker_time;
+   uint32_t flicker_frame_count;
+   uint32_t flicker_frame_index;
+   float *this_flicker;
+   bool flickering;
+   bool last_flicker_long;
+   bool this_flicker_long;
+} flicker_t;
+
+flicker_t digit_flicker[NUM_DIGITS];
+
+float rand_gaussian(void) {
+   float sum = 0.0f;
+   for(int i = 0; i < 12; i++) {
+       sum += (float)rand() / RAND_MAX;
+   }
+   return sum - 6.0f;
+}
+
+
 void vTimerCallback(TimerHandle_t xTimer) {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    vTaskNotifyGiveFromISR(xFrameTask, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-
-APA102_LED digit_pattern[DIGIT_ROW_WIDTH * NUM_DIGITS];
-
-void set_digit(APA102 *strip, APA102_LED *pattern, uint8_t digit) {
-    strip->clear_strip();
-    for(uint8_t n = 0; n < DIGIT_ROW_WIDTH; n++) {
-        strip->set_led(n + (digit * DIGIT_ROW_WIDTH), pattern[n].red, pattern[n].green, pattern[n].blue, pattern[n].brightness);
-    }
-    strip->update_strip();
+   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+   vTaskNotifyGiveFromISR(xFrameTask, &xHigherPriorityTaskWoken);
+   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 
-void led_task(void *pvParameters) {
-    struct tm currentTime;
-    WifiConnection *wifi = (WifiConnection *)pvParameters;
-    uint8_t hours_10, hours_1, minutes_10, minutes_1, seconds_10, seconds_1;
+void clock_task(void *pvParameters) {
+   struct tm currentTime;
+   WifiConnection *wifi = (WifiConnection *)pvParameters;
 
-    printf("LED TASK STARTED, WAITING FOR WIFI\n");
-    wifi->wait_for_wifi_init();
-    printf("LED TASK WIFI IS UP\n");
+   printf("LED TASK STARTED, NOT WAITING FOR WIFI\n");
+   // wifi->wait_for_wifi_init();
+   // printf("LED TASK WIFI IS UP\n");
 
-    xFrameTask = xTaskGetCurrentTaskHandle();
-    xFrameTimer = xTimerCreate("FrameTimer", pdMS_TO_TICKS(40), pdTRUE, 0, vTimerCallback);
-    if(xFrameTimer != NULL) {
-        xTimerStart(xFrameTimer, 0);
-    }
+   xFrameTask = xTaskGetCurrentTaskHandle();
+   xFrameTimer = xTimerCreate("FrameTimer", pdMS_TO_TICKS(40), pdTRUE, 0, vTimerCallback);
+   if(xFrameTimer != NULL) {
+      xTimerStart(xFrameTimer, 0);
+   }
 
-    // Lame digit pattern for now
-    for(uint8_t n = 0; n < DIGIT_ROW_WIDTH * NUM_DIGITS; n++) {
-        digit_pattern[n].red = 255;
-        digit_pattern[n].green = 0;
-        digit_pattern[n].blue = 0;
-        digit_pattern[n].brightness = 2;
-    }
+   // amber: 255, 179, 51
+   // amber: 255, 191, 64
+   uint8_t brightness[5] = {3, 15, 31, 15, 3};
+   uint8_t red = 230, green = 102, blue = 23;
+   for(int digit = 0; digit < NUM_DIGITS; digit++) {
+      for(int led = 0; led < DIGIT_ROW_WIDTH; led++) {
+         digit_pattern[digit][led].red = red;
+         digit_pattern[digit][led].green = green;
+         digit_pattern[digit][led].blue = blue;
+         digit_pattern[digit][led].brightness = brightness[led];
+      }
+      nixie_clock.set_digit_pattern((clock_digit_t)digit, digit_pattern[digit]);
+   }
 
-    uint32_t frame = 0;
-    for(;;) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-        printf("FRAME %d\n", frame);
-
-        aon_timer_get_time_calendar(&currentTime);
-        hours_10 = currentTime.tm_hour / 10;
-        hours_1 = currentTime.tm_hour % 10;
-        minutes_10 = currentTime.tm_min / 10;
-        minutes_1 = currentTime.tm_min % 10;
-        seconds_10 = currentTime.tm_sec / 10;
-        seconds_1 = currentTime.tm_sec % 10;
+   uint64_t now = time_us_64();
+   for(int n = 0; n < NUM_DIGITS; n++) {
+      digit_flicker[n].last_flicker_time = 0;
+      digit_flicker[n].next_flicker_time = now + (rand_gaussian() * 1000000);
+      digit_flicker[n].flicker_frame_count = 0;
+      digit_flicker[n].flicker_frame_index = 0;
+      digit_flicker[n].flickering = false;
+      digit_flicker[n].last_flicker_long = false;
+      digit_flicker[n].this_flicker = NULL;
+   }
 
 
-        // printf("SECONDS %d %d\n", seconds_10, seconds_1);
+   uint32_t frame = 0;
 
-        set_digit(&leds_hours_10,   &digit_pattern[DIGIT_ROW_WIDTH * 0], hours_10);
-        set_digit(&leds_hours_1,    &digit_pattern[DIGIT_ROW_WIDTH * 1], hours_1);
-        set_digit(&leds_minutes_10, &digit_pattern[DIGIT_ROW_WIDTH * 2], minutes_10);
-        set_digit(&leds_minutes_1,  &digit_pattern[DIGIT_ROW_WIDTH * 3], minutes_1);
-        set_digit(&leds_seconds_10, &digit_pattern[DIGIT_ROW_WIDTH * 4], seconds_10);
-        set_digit(&leds_seconds_1,  &digit_pattern[DIGIT_ROW_WIDTH * 5], seconds_1);
+   for(;;) {
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      now = time_us_64();
 
-        frame++;
-    }
+      aon_timer_get_time_calendar(&currentTime);
+
+      for(int digit = 0; digit < NUM_DIGITS; digit++) {
+         flicker_t *flicker = &digit_flicker[digit];
+         if(flicker->flickering == false) {
+            if(flicker->next_flicker_time < now) {
+               flicker->flickering = true;
+               flicker->flicker_frame_index = 0;
+               float next_flicker_length_rand = abs(rand_gaussian());
+               bool next_flicker_long;
+               if(flicker->last_flicker_long) {
+                  flicker->this_flicker_long = next_flicker_length_rand < 1.5;
+               }
+               else {
+                  flicker->this_flicker_long = next_flicker_length_rand < 0.8;
+               }
+               if(flicker->this_flicker_long) {
+                  flicker->flicker_frame_count = LONG_FLICKER_FRAME_COUNT;
+                  flicker->this_flicker = long_flicker;
+               }
+               else {
+                  flicker->flicker_frame_count = SHORT_FLICKER_FRAME_COUNT;
+                  flicker->this_flicker = short_flicker;
+               }
+            }
+         }
+         else {
+            float flicker_multiplier = flicker->this_flicker[flicker->flicker_frame_index++];
+
+            for(int led = 0; led < DIGIT_ROW_WIDTH; led++) {
+               digit_pattern[digit][led].red = red * flicker_multiplier;
+               digit_pattern[digit][led].green = green * flicker_multiplier;
+               digit_pattern[digit][led].blue = blue * flicker_multiplier;
+               digit_pattern[digit][led].brightness = brightness[led] * flicker_multiplier;
+            }
+            nixie_clock.set_digit_pattern((clock_digit_t)digit, digit_pattern[digit]);
+
+            if(flicker->flicker_frame_index >= flicker->flicker_frame_count) {
+               flicker->flickering = false;
+               flicker->last_flicker_time = now;
+               flicker->next_flicker_time = now + (rand_gaussian() * 5000000);
+               flicker->last_flicker_long = flicker->this_flicker_long;
+               flicker->this_flicker = NULL;
+            }
+         }
+      }
+
+      nixie_clock.set_time(&currentTime);
+
+      frame++;
+   }
 }
-
 
 
 void launch() {
+   wifi.set_ssid(WIFI_SSID);
+   wifi.set_password(WIFI_PASSWORD);
 
-    wifi.set_ssid(WIFI_SSID);
-    wifi.set_password(WIFI_PASSWORD);
+   printf("STARTING CYW43/WIFI INITIALIZATION\n");
+   wifi.init();
 
-    printf("STARTING CYW43/WIFI INITIALIZATION\n");
-    wifi.init();
+   printf("STARTING NTP SYNC\n");
+   network_time.set_timezone(0, config.tz_offset_minutes);
+   network_time.set_wifi_connection(&wifi);
+   network_time.init();
 
-    printf("STARTING NTP SYNC\n");
-    network_time.sntp_set_timezone(-7);
-    network_time.set_wifi_connection(&wifi);
-    network_time.init();
+   xTaskCreate(clock_task, "LED Data Task", 1024, &wifi, 1, &led_task_handle);
 
-    xTaskCreate(led_task, "LED Data Task", 1024, &wifi, 1, &led_task_handle);
-
-    vTaskStartScheduler();
+   vTaskStartScheduler();
 }
 
 
 int main() {
-    stdio_init_all();
-    sleep_ms(2000);
-    printf("UP\n");
-    sleep_ms(500);
+   stdio_init_all();
+   // sleep_ms(1000);
+   // printf("UP\n");
+   // sleep_ms(500);
 
-    printf("LAUNCHING\n");
-    launch();
+   // printf("LAUNCHING\n");
+   launch();
 }

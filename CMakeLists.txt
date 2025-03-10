@@ -50,6 +50,7 @@ add_executable(${OUTPUT_NAME}
     src/main.cpp
     src/pico_led.c
     src/apa102.cpp
+    src/clock.cpp
     src/wifi.cpp
     src/network_time.cpp
     src/base64.c

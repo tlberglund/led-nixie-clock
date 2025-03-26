@@ -166,7 +166,7 @@ void clock_task(void *pvParameters) {
             if(flicker->flicker_frame_index >= flicker->flicker_frame_count) {
                flicker->flickering = false;
                flicker->last_flicker_time = now;
-               flicker->next_flicker_time = now + (rand_gaussian() * 5000000);
+               flicker->next_flicker_time = now + (rand_gaussian() * 50000000);
                flicker->last_flicker_long = flicker->this_flicker_long;
                flicker->this_flicker = NULL;
             }

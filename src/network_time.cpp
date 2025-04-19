@@ -55,6 +55,11 @@ void NetworkTime::set_timezone(int offsetHours, int offsetMinutes) {
 }
 
 
+void NetworkTime::set_timezone(const char *tz) {
+    timezone_name = tz;
+}
+
+
 /**
  * Add SNTP server - can call to add multiple servers
  * @param server - string name of server. Should remain in scope
@@ -91,7 +96,7 @@ void NetworkTime::set_time_in_seconds(uint32_t sec) {
     //
     // Handling of 64-bit integers seems suspect. ms_to_timespec() takes a
     // uint64_t argument and doesn't seem to work, and %llu doesn't give
-    // reliable results∑ in printf() either. So, fine...I'll have to do it
+    // reliable results in printf() either. So, fine...I'll have to do it
     // myself.
     //
     ts.tv_sec = sec + (timezone_offset_minutes * 60);
@@ -122,6 +127,10 @@ void NetworkTime::time_task(void *params) {
     printf("TIMEZONE OFFSET: %d\n", time->timezone_offset_minutes);
 
     time->start_sntp_sync();
+
+    for(;;) {
+        vTaskDelay(pdMS_TO_TICKS(1000*60*60));
+    }
 
     printf("NTP SYNC RUNNING; EXITING NTP TASK\n");
 

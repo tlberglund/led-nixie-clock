@@ -22,6 +22,7 @@ config_t config = {
     MAGIC_NUMBER,
     WIFI_SSID,
     WIFI_PASSWORD,
+    "America/Los_Angeles",
     -480,            // TZ offset (minutes)
     true,            // use DHCP
     true,            // 24-hour clock
@@ -30,9 +31,6 @@ config_t config = {
     {0, 0, 0, 0},    // static netmask
     0x00000000       // CRC (not used right now)
 };
-
-
-#define GPIO_LAMP_TEST 16
 
 
 WifiConnection& wifi = WifiConnection::getInstance();
@@ -189,6 +187,7 @@ void launch() {
 
    printf("STARTING NTP SYNC\n");
    network_time.set_timezone(0, config.tz_offset_minutes);
+   network_time.set_timezone("America/Los_Angeles");
    network_time.set_wifi_connection(&wifi);
    network_time.init();
 

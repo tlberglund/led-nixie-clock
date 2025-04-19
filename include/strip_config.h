@@ -12,6 +12,7 @@ typedef struct {
     uint32_t magic;
     char wifi_ssid[32];
     char wifi_password[64];
+    char timezone[48];
     int16_t tz_offset_minutes;
     bool use_dhcp;
     bool use_24_hour_mode;

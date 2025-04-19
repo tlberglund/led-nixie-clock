@@ -14,6 +14,7 @@ class NetworkTime {
     public:
         void init();
         void set_timezone(int offsetHours, int offsetMinutes = 0);
+        void set_timezone(const char *tz);
         void add_sntp_server(const char *server);
         void start_sntp_sync();
         void set_time_in_seconds(uint32_t sec);
@@ -42,6 +43,7 @@ class NetworkTime {
         TaskHandle_t time_task_handle;
         int sntp_server_count;
         int16_t timezone_offset_minutes;
+        const char *timezone_name;
         WifiConnection *wifi;
         bool aon_is_running;
 };

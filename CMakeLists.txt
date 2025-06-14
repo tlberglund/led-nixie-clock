@@ -55,6 +55,8 @@ add_executable(${OUTPUT_NAME}
     src/network_time.cpp
     src/base64.c
     src/http.cpp
+    src/push_button.cpp
+    src/push_buttons.cpp
 )
 
 pico_generate_pio_header(${OUTPUT_NAME} ${CMAKE_CURRENT_LIST_DIR}/src/apa102.pio)
@@ -74,6 +76,7 @@ target_link_libraries(${OUTPUT_NAME}
     pico_lwip_sntp
     hardware_pio
     hardware_dma
+    hardware_adc
     pico_aon_timer
     pico_stdio_usb
     pico_cyw43_arch_lwip_sys_freertos

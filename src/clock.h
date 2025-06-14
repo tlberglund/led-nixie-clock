@@ -1,6 +1,6 @@
 
-#ifndef __DIGITS_H__
-#define __DIGITS_H__
+#ifndef __CLOCK_H__
+#define __CLOCK_H__
 
 #include "apa102.h"
 #include <time.h>

@@ -15,6 +15,8 @@ extern "C" {
     #include "task.h"
     #include "queue.h"
     #include "timers.h"
+    #include "hardware/adc.h"
+    #include "hardware/gpio.h"
 }
 
 
@@ -24,8 +26,11 @@ config_t config = {
     WIFI_PASSWORD,
     "America/Los_Angeles",
     -480,            // TZ offset (minutes)
+    {0, 0},          // padding
     true,            // use DHCP
+    {0, 0, 0},       // padding
     true,            // 24-hour clock
+    {0, 0, 0},       // padding
     {0, 0, 0, 0},    // static IP address
     {0, 0, 0, 0},    // static gateway address
     {0, 0, 0, 0},    // static netmask
@@ -42,6 +47,23 @@ APA102_LED digit_pattern[NUM_DIGITS][DIGIT_ROW_WIDTH];
 static TaskHandle_t led_task_handle;
 TimerHandle_t xFrameTimer;
 TaskHandle_t xFrameTask;
+
+TimerHandle_t xStatusTimer;
+TaskHandle_t xStatusTask;
+
+APA102 status_leds(3, 16, 17, pio2, 0);
+#define STATUS_LED_CURRENT 0
+#define STATUS_LED_NETWORK 1
+
+// Hardware is rated for 50W max at 5V
+#define MAX_CURRENT 10.0 
+
+#define GPIO_CURRENT_SENSOR 26
+#define GPIO_STATUS_LED 22
+
+#define BLINK_SAMPLES 50
+uint8_t blink_curve[] = { 0, 0, 0, 0, 0, 1, 4, 15, 46, 109, 192, 255, 255, 192, 109, 46, 15, 4, 1, 0, 0, 0, 0, 0, 0, 
+                          0, 0, 0, 0, 0, 0, 0,  0,  0,   0,   0,   0,   0,   0,   0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 
 
@@ -71,10 +93,102 @@ float rand_gaussian(void) {
 }
 
 
-void vTimerCallback(TimerHandle_t xTimer) {
+void vFrameTimerCallback(TimerHandle_t xTimer) {
    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
    vTaskNotifyGiveFromISR(xFrameTask, &xHigherPriorityTaskWoken);
    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+void vStatusTimerCallback(TimerHandle_t xTimer) {
+   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+   vTaskNotifyGiveFromISR(xStatusTask, &xHigherPriorityTaskWoken);
+   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+
+void status_task(void *pvParameters) {
+   printf("STATUS TASK STARTED\n");
+   WifiConnection *wifi = (WifiConnection *)pvParameters;
+
+   adc_init();
+   adc_gpio_init(GPIO_CURRENT_SENSOR);
+
+   gpio_init(GPIO_STATUS_LED);
+   gpio_set_dir(GPIO_STATUS_LED, GPIO_OUT);
+   gpio_set_drive_strength(10, GPIO_DRIVE_STRENGTH_2MA);
+
+   xStatusTask = xTaskGetCurrentTaskHandle();
+   xStatusTimer = xTimerCreate("StatusTimer", pdMS_TO_TICKS(40), pdTRUE, 0, vStatusTimerCallback);
+   if(xStatusTimer != NULL) {
+       xTimerStart(xStatusTimer, 0);
+   }
+
+   status_leds.set_led(STATUS_LED_CURRENT, 0, 0, 0, 1);
+   status_leds.set_led(STATUS_LED_NETWORK, 0, 0, 0, 1);
+   status_leds.update_strip();
+
+   float current_draw = 0.0f;
+   uint16_t current_adc_raw;
+   uint8_t network_blink_index = 0;
+
+   for(;;) {
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+      adc_select_input(0);
+      current_adc_raw = adc_read();
+      printf("CURRENT RAW=%d\n", current_adc_raw);
+      current_draw = current_adc_raw * 3.3f / 4096.0f; // This is from Copilot, WTF
+      printf("CURRENT(A)=%f\n", current_draw);
+
+      // The closer we are to the max current, the brighter red the current LED is--
+      // meaning we use even more current. But hey, it's fine.
+      uint8_t current_red = (current_draw / MAX_CURRENT) * 255;
+      uint8_t current_brightness = (current_draw / MAX_CURRENT) * 31;
+      status_leds.set_led(STATUS_LED_CURRENT, current_red, 0, 0, current_brightness);
+
+      switch(wifi->get_state()) {
+         case ConnectionState::INIT:
+            // dim orange
+            status_leds.set_led(STATUS_LED_NETWORK, 245, 122, 15, 2);
+            break;
+
+         case ConnectionState::CY43_INIT:
+            // bright orange
+            status_leds.set_led(STATUS_LED_NETWORK, 245, 122, 15, 15);
+            break;
+
+         case ConnectionState::CONNECTED:
+            // dim blue
+            status_leds.set_led(STATUS_LED_NETWORK, 0, 0, 64, 2);
+            break;
+
+         case ConnectionState::CONNECTING:
+            // pulsing blue
+            status_leds.set_led(STATUS_LED_NETWORK, 0, 0, blink_curve[network_blink_index], 15);
+            break;
+
+         case ConnectionState::DISCONNECTED:
+            // pulsing red
+            status_leds.set_led(STATUS_LED_NETWORK, blink_curve[network_blink_index], 0, 0, 15); 
+            break;
+
+         case ConnectionState::FAILED:
+            // bright red
+            status_leds.set_led(STATUS_LED_NETWORK, 255, 0, 0, 15); 
+            break;
+
+         default:
+            printf("UNKNOWN NETWORK STATE\n");
+            break;
+      }
+
+      status_leds.update_strip();
+          
+      network_blink_index++;
+      if(network_blink_index >= BLINK_SAMPLES) {
+         network_blink_index = 0;
+      }
+   }
 }
 
 
@@ -83,11 +197,9 @@ void clock_task(void *pvParameters) {
    WifiConnection *wifi = (WifiConnection *)pvParameters;
 
    printf("LED TASK STARTED, NOT WAITING FOR WIFI\n");
-   // wifi->wait_for_wifi_init();
-   // printf("LED TASK WIFI IS UP\n");
 
    xFrameTask = xTaskGetCurrentTaskHandle();
-   xFrameTimer = xTimerCreate("FrameTimer", pdMS_TO_TICKS(40), pdTRUE, 0, vTimerCallback);
+   xFrameTimer = xTimerCreate("FrameTimer", pdMS_TO_TICKS(40), pdTRUE, 0, vFrameTimerCallback);
    if(xFrameTimer != NULL) {
       xTimerStart(xFrameTimer, 0);
    }
@@ -186,12 +298,13 @@ void launch() {
    wifi.init();
 
    printf("STARTING NTP SYNC\n");
-   network_time.set_timezone(0, config.tz_offset_minutes);
-   network_time.set_timezone("America/Los_Angeles");
+   // network_time.set_timezone(0, config.tz_offset_minutes);
+   // network_time.set_timezone("America/Los_Angeles");
    network_time.set_wifi_connection(&wifi);
    network_time.init();
 
    xTaskCreate(clock_task, "LED Data Task", 1024, &wifi, 1, &led_task_handle);
+   xTaskCreate(status_task, "Status Task", 1024, &wifi, 0, NULL);
 
    vTaskStartScheduler();
 }

@@ -47,6 +47,7 @@ project(${PROJECT_NAME}
 pico_sdk_init()
 
 add_executable(${OUTPUT_NAME}
+    # src/usbtest.cpp
     src/main.cpp
     src/pico_led.c
     src/apa102.cpp

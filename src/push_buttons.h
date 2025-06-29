@@ -16,21 +16,21 @@
 
 class PushButtons {
    public:
-      void add_button(PushButton *push_button) { buttons.push_back(push_button); };
+      void add(PushButton *push_button) { buttons.push_back(push_button); };
 
+      // Do not call during static initialization
       static PushButtons& getInstance() {
          static PushButtons instance;
 
          return instance;
       }
 
+      void init();
+
       std::list<PushButton *> buttons;
 
    private:
       PushButtons();
-
-      // BaseType_t button_task;
-      // std::list<PushButton *> buttons;
 };
 
 

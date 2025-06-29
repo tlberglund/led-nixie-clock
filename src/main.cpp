@@ -6,6 +6,7 @@
 #include "apa102.h"
 #include "clock.h"
 #include "strip_config.h"
+#include "push_buttons.h"
 #include "pico/aon_timer.h"
 
 extern "C" {
@@ -18,7 +19,6 @@ extern "C" {
     #include "hardware/adc.h"
     #include "hardware/gpio.h"
 }
-
 
 config_t config = {
     MAGIC_NUMBER,
@@ -41,6 +41,11 @@ config_t config = {
 WifiConnection& wifi = WifiConnection::getInstance();
 NetworkTime& network_time = NetworkTime::getInstance();
 Clock nixie_clock;
+
+PushButtons& buttons = PushButtons::getInstance();
+PushButton lampTest(20, true, BUTTON_PULL_DOWN); 
+PushButton militaryTime(21, true, BUTTON_PULL_DOWN);
+
 
 APA102_LED digit_pattern[NUM_DIGITS][DIGIT_ROW_WIDTH];
 
@@ -83,6 +88,7 @@ typedef struct flicker {
 } flicker_t;
 
 flicker_t digit_flicker[NUM_DIGITS];
+
 
 float rand_gaussian(void) {
    float sum = 0.0f;
@@ -136,9 +142,9 @@ void status_task(void *pvParameters) {
 
       adc_select_input(0);
       current_adc_raw = adc_read();
-      printf("CURRENT RAW=%d\n", current_adc_raw);
+      // printf("CURRENT RAW=%d\n", current_adc_raw);
       current_draw = current_adc_raw * 3.3f / 4096.0f; // This is from Copilot, WTF
-      printf("CURRENT(A)=%f\n", current_draw);
+      // printf("CURRENT(A)=%f\n", current_draw);
 
       // The closer we are to the max current, the brighter red the current LED is--
       // meaning we use even more current. But hey, it's fine.
@@ -290,21 +296,34 @@ void clock_task(void *pvParameters) {
 }
 
 
+
 void launch() {
    wifi.set_ssid(WIFI_SSID);
    wifi.set_password(WIFI_PASSWORD);
 
    printf("STARTING CYW43/WIFI INITIALIZATION\n");
-   wifi.init();
+   // wifi.init();
 
    printf("STARTING NTP SYNC\n");
    // network_time.set_timezone(0, config.tz_offset_minutes);
    // network_time.set_timezone("America/Los_Angeles");
-   network_time.set_wifi_connection(&wifi);
-   network_time.init();
+   // network_time.set_wifi_connection(&wifi);
+   // network_time.init();
 
-   xTaskCreate(clock_task, "LED Data Task", 1024, &wifi, 1, &led_task_handle);
-   xTaskCreate(status_task, "Status Task", 1024, &wifi, 0, NULL);
+   // xTaskCreate(clock_task, "LED Data Task", 1024, &wifi, 1, &led_task_handle);
+   // xTaskCreate(status_task, "Status Task", 1024, &wifi, 0, NULL);
+
+   buttons.init();
+
+   lampTest.set_press_handler(debug_press_handler);
+   lampTest.set_long_press_handler(debug_long_press_handler);
+   lampTest.set_release_handler(debug_release_handler);
+   lampTest.set_double_press_handler(debug_double_press_handler);
+   lampTest.set_double_release_handler(debug_double_release_handler);
+
+   buttons.add(&lampTest);
+   buttons.add(&militaryTime);
+   gpio_put(22, true);
 
    vTaskStartScheduler();
 }
@@ -312,10 +331,16 @@ void launch() {
 
 int main() {
    stdio_init_all();
-   // sleep_ms(1000);
-   // printf("UP\n");
-   // sleep_ms(500);
 
-   // printf("LAUNCHING\n");
+   sleep_ms(1000);
+   printf("UP\n");
+
+   gpio_init(22);
+   gpio_set_dir(22, GPIO_OUT);
+
+   printf("LAUNCHING\n");
+
+   sleep_ms(1000);
+
    launch();
 }

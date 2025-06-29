@@ -20,14 +20,26 @@ void button_timer_callback(TimerHandle_t xTimer) {
 void button_task(void *pvParameters) {
    PushButtons *buttons = (PushButtons *)pvParameters;
 
+   printf("Button task started\n");
+   gpio_init(19);
+   gpio_set_dir(19, GPIO_OUT);
+   gpio_pull_up(19);
+
    button_task_handle = xTaskGetCurrentTaskHandle();
-   button_timer_handle = xTimerCreate("FrameTimer", pdMS_TO_TICKS(10), pdTRUE, 0, button_timer_callback);
+   button_timer_handle = xTimerCreate("FrameTimer", pdMS_TO_TICKS(5), pdTRUE, 0, button_timer_callback);
    if(button_timer_handle != NULL) {
       xTimerStart(button_timer_handle, 0);
    }
 
+   printf("Button timer created, starting loop\n");
+
+   bool toggle = false;
+
    for(;;) {
       ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+      gpio_put(19, toggle);
+      toggle = !toggle;
 
       auto iterator = buttons->buttons.begin();
       auto last = buttons->buttons.end();
@@ -41,9 +53,12 @@ void button_task(void *pvParameters) {
    }
 }
 
+void PushButtons::init() {
+   printf("PushButtons init\n");
+   xTaskCreate(button_task, "Button Task", 1024, this, 1, NULL);
+}
 
 PushButtons::PushButtons() {
-   xTaskCreate(button_task, "Button Task", 1024, this, 1, NULL);
 }
 
 

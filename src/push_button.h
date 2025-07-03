@@ -78,6 +78,9 @@ class PushButton {
 
       void process_tick();
 
+      bool is_pressed();
+      bool is_released();
+
    private:
       int state;
       bool polarity; // true = active high

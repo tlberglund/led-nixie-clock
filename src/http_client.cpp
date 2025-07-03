@@ -34,7 +34,7 @@
 
 int HttpClient::http_client_request_async(async_context_t *context, http_request_t *req)
 {
-#if LWIP_ALTCP
+#if LWIP_ALTCP && LWIP_ALTCP_TLS
    const uint16_t default_port = req->tls_config ? 443 : 80;
    if (req->tls_config)
    {
@@ -161,7 +161,7 @@ static void internal_result_fn(void *arg,
    }
 }
 
-#if LWIP_ALTCP
+#if LWIP_ALTCP && LWIP_ALTCP_TLS
 static struct altcp_pcb *altcp_tls_alloc_sni(void *arg, u8_t ip_type)
 {
    assert(arg);

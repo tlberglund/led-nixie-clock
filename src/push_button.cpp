@@ -39,6 +39,16 @@ PushButton::PushButton(int pin, bool active_high, int pull_dir) {
 }
 
 
+bool PushButton::is_pressed() {
+   return state == STATE_PRESSED || state == STATE_LONG_PRESS;
+}
+
+
+bool PushButton::is_released() {
+   return state == STATE_IDLE;
+}
+
+
 void PushButton::process_tick() {
 
    bool button_down = read_input();

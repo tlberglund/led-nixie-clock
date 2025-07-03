@@ -315,12 +315,6 @@ void launch() {
 
    buttons.init();
 
-   lampTest.set_press_handler(debug_press_handler);
-   lampTest.set_long_press_handler(debug_long_press_handler);
-   lampTest.set_release_handler(debug_release_handler);
-   lampTest.set_double_press_handler(debug_double_press_handler);
-   lampTest.set_double_release_handler(debug_double_release_handler);
-
    buttons.add(&lampTest);
    buttons.add(&militaryTime);
    gpio_put(22, true);

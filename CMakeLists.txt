@@ -47,7 +47,6 @@ project(${PROJECT_NAME}
 pico_sdk_init()
 
 add_executable(${OUTPUT_NAME}
-    # src/usbtest.cpp
     src/main.cpp
     src/pico_led.c
     src/apa102.cpp
@@ -55,9 +54,12 @@ add_executable(${OUTPUT_NAME}
     src/wifi.cpp
     src/network_time.cpp
     src/base64.c
-    src/http.cpp
     src/push_button.cpp
     src/push_buttons.cpp
+    src/http_client.cpp
+    src/buffer_pool.cpp
+    src/time_zone.cpp
+    src/url_parser.c
 )
 
 pico_generate_pio_header(${OUTPUT_NAME} ${CMAKE_CURRENT_LIST_DIR}/src/apa102.pio)
@@ -81,6 +83,7 @@ target_link_libraries(${OUTPUT_NAME}
     pico_aon_timer
     pico_stdio_usb
     pico_cyw43_arch_lwip_sys_freertos
+    pico_lwip_http
     FreeRTOS-Kernel-Heap4)
 
 

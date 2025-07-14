@@ -8,6 +8,7 @@
 #include "strip_config.h"
 #include "push_buttons.h"
 #include "pico/aon_timer.h"
+#include "time_zone.h"
 
 extern "C" {
     #include "pico/cyw43_arch.h"
@@ -41,6 +42,7 @@ config_t config = {
 WifiConnection& wifi = WifiConnection::getInstance();
 NetworkTime& network_time = NetworkTime::getInstance();
 Clock nixie_clock;
+TimeZone &time_zone = TimeZone::getInstance();
 
 PushButtons& buttons = PushButtons::getInstance();
 PushButton lampTest(20, true, BUTTON_PULL_DOWN); 
@@ -313,6 +315,8 @@ void launch() {
    // xTaskCreate(clock_task, "LED Data Task", 1024, &wifi, 1, &led_task_handle);
    // xTaskCreate(status_task, "Status Task", 1024, &wifi, 0, NULL);
 
+   time_zone.init();
+   printf("TimeZone initialized\n");
    buttons.init();
 
    buttons.add(&lampTest);
@@ -329,12 +333,9 @@ int main() {
    sleep_ms(1000);
    printf("UP\n");
 
-   gpio_init(22);
-   gpio_set_dir(22, GPIO_OUT);
+   sleep_ms(1000);
 
    printf("LAUNCHING\n");
-
-   sleep_ms(1000);
 
    launch();
 }

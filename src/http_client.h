@@ -62,7 +62,7 @@ class HttpClient {
       };
 
       HttpClient();
-      // void set_wifi_connection(WifiConnection *wifi) { this->wifi = wifi; };
+      void set_wifi_connection(WifiConnection *wifi) { this->wifi = wifi; };
 
       err_t get(const char *url,
                 ReceiveCallback on_receive = nullptr,
@@ -70,7 +70,7 @@ class HttpClient {
                 ResultCallback on_result = nullptr);
 
    protected:
-      // WifiConnection *wifi;
+      WifiConnection *wifi;
       CallbackData callback_data;
       ReceiveCallback receive_cb;
       HeadersCallback headers_cb;

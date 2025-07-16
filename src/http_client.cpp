@@ -83,6 +83,8 @@ err_t HttpClient::rx_callback(void *arg, struct altcp_pcb *conn, struct pbuf *p,
          pbuf_copy_partial(p, buffer, copy_len, 0);
          buffer[copy_len] = '\0';
 
+         printf("%s\n", buffer);
+
          data->receive_cb(buffer, p->tot_len);
 
          bufferPool().deallocate(buffer);

@@ -8,6 +8,7 @@
 
 BufferPool::BufferPool(size_t pool_size, size_t buffer_size) : pool_size(pool_size), buffer_size(buffer_size)
 {
+   printf("BufferPool::BufferPool() - pool_size=%zu, buffer_size=%zu\n", pool_size, buffer_size);
    for(size_t i = 0; i < pool_size; i++)
    {
       char *buffer = new char[buffer_size];
@@ -16,6 +17,8 @@ BufferPool::BufferPool(size_t pool_size, size_t buffer_size) : pool_size(pool_si
 
    allocate_mutex = xSemaphoreCreateMutex();
    counting_semaphore = xSemaphoreCreateCounting(pool_size, 0);
+
+   printf("BufferPool::BufferPool() - %d buffers, mutex=%d, sem=%d\n", buffers.size(), allocate_mutex, counting_semaphore);
 }
 
 
@@ -33,7 +36,9 @@ BufferPool::~BufferPool()
 
 void *BufferPool::allocate()
 {
-   xSemaphoreTake(counting_semaphore, portMAX_DELAY);
+   // printf("BufferPool::allocate() - about to take counting semaphore\n");
+   // xSemaphoreTake(counting_semaphore, portMAX_DELAY);
+   printf("BufferPool::allocate() - about to take allocate mutex\n");
    xSemaphoreTake(allocate_mutex, portMAX_DELAY);
 
    void *buffer = nullptr;
@@ -43,20 +48,26 @@ void *BufferPool::allocate()
    }
    else {
       // In case something went really quite pear-shaped
+      printf("BufferPool::allocate() - no buffers available\n");
       xSemaphoreGive(counting_semaphore);
    }
 
+   printf("BufferPool::allocate() - about to give allocate mutex\n");
    xSemaphoreGive(allocate_mutex);
+   printf("BufferPool::allocate() - returning %p\n", buffer);
    return buffer;
 }
 
 
 void BufferPool::deallocate(void *buffer) {
+   printf("BufferPool::deallocate() - freeing %p\n", buffer);
    if(buffer != nullptr) {
+      printf("BufferPool::deallocate() - taking allocate mutex\n");
       xSemaphoreTake(allocate_mutex, portMAX_DELAY);
       buffers.push_back(buffer);
       xSemaphoreGive(allocate_mutex);
-      xSemaphoreGive(counting_semaphore);
+      printf("BufferPool::deallocate() - gave allocate mutex\n");
+      // xSemaphoreGive(counting_semaphore);
    }
 }
 

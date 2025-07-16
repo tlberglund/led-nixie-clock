@@ -25,6 +25,8 @@ void TimeZone::requestTimeZone() {
 void TimeZone::parseReply(char *data, size_t len) {
    TimeZone &tz = TimeZone::getInstance();
 
+   printf("TimeZone::parseReply() - data=%s, len=%zu\n", data, len);
+
    char *timeZone, *offset, *dst;
    int charCount = 0;
 
@@ -79,6 +81,8 @@ void TimeZone::init() {
 void TimeZone::timeZoneTask(void *params) {
    printf("TimeZone::timeZoneTask() started\n");
    TimeZone &tz = TimeZone::getInstance();
+   tz.wifi->wait_for_wifi_init();
+   printf("wifi initialized\n");
    tz.requestTimeZone();
    tz.timeZoneTaskHandle = xTaskGetCurrentTaskHandle();
    tz.timeZoneTimer = xTimerCreate("TimeZoneTimer", pdMS_TO_TICKS(1000 * 5), pdTRUE, 0, timerCallback);

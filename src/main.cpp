@@ -303,20 +303,24 @@ void launch() {
    wifi.set_ssid(WIFI_SSID);
    wifi.set_password(WIFI_PASSWORD);
 
+
    printf("STARTING CYW43/WIFI INITIALIZATION\n");
-   // wifi.init();
+   wifi.init();
 
    printf("STARTING NTP SYNC\n");
    // network_time.set_timezone(0, config.tz_offset_minutes);
    // network_time.set_timezone("America/Los_Angeles");
-   // network_time.set_wifi_connection(&wifi);
-   // network_time.init();
+   network_time.set_wifi_connection(&wifi);
+   network_time.init();
 
    // xTaskCreate(clock_task, "LED Data Task", 1024, &wifi, 1, &led_task_handle);
    // xTaskCreate(status_task, "Status Task", 1024, &wifi, 0, NULL);
 
+   time_zone.set_wifi_connection(&wifi);
    time_zone.init();
    printf("TimeZone initialized\n");
+
+
    buttons.init();
 
    buttons.add(&lampTest);

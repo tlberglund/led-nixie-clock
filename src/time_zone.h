@@ -30,7 +30,7 @@ class TimeZone : public HttpClient {
    private:
       TimeZone();
 
-      const char *apiUrl = "http://what-time-zone.netlify.app/timezone";
+      const char *apiUrl = "https://what-time-zone.netlify.app/timezone";
       timeZoneData_t tzData;
       SemaphoreHandle_t replySemaphore;
       TaskHandle_t timeZoneTaskHandle;

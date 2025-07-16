@@ -14,6 +14,7 @@
 #define LWIP_SOCKET                 1
 
 #define MEM_LIBC_MALLOC             0
+#define MEMP_MEM_MALLOC             0
 
 #define MEM_ALIGNMENT               4
 #define MEM_SIZE                    4000
@@ -32,9 +33,9 @@
 #define LWIP_NETIF_LINK_CALLBACK    1
 #define LWIP_NETIF_HOSTNAME         1
 #define LWIP_NETCONN                1
-#define MEM_STATS                   1
+#define MEM_STATS                   0
 #define SYS_STATS                   0
-#define MEMP_STATS                  1
+#define MEMP_STATS                  0
 #define LINK_STATS                  0
 // #define ETH_PAD_SIZE                2
 #define LWIP_CHKSUM_ALGORITHM       3
@@ -47,6 +48,20 @@
 #define LWIP_NETIF_TX_SINGLE_PBUF   1
 #define DHCP_DOES_ARP_CHECK         1
 #define LWIP_DHCP_DOES_ACD_CHECK    0
+#define LWIP_ALTCP                  1
+#define LWIP_ALTCP_TLS              1
+#define LWIP_ALTCP_TLS_MBEDTLS      1
+#define LWIP_ALTCP_PROXY_CONNECT    1
+#define LWIP_ALLOW_MEM_FREE_FROM_OTHER_CONTEXT 1
+#define LWIP_NETIF_API              1
+#define LWIP_CALLBACK_API           1
+
+#define ALTCP_MBEDTLS_AUTHMODE      MBEDTLS_SSL_VERIFY_REQUIRED
+
+
+#define SYS_LIGHTWEIGHT_PROT        1
+
+
 
 // #ifndef NDEBUG
 #define LWIP_DEBUG                  1
@@ -79,7 +94,7 @@
 #define MEM_DEBUG                   LWIP_DBG_ON
 #define MEMP_DEBUG                  LWIP_DBG_ON
 #define SYS_DEBUG                   LWIP_DBG_OFF
-#define TCP_DEBUG                   LWIP_DBG_OFF
+#define TCP_DEBUG                   LWIP_DBG_ON
 #define TCP_INPUT_DEBUG             LWIP_DBG_OFF
 #define TCP_OUTPUT_DEBUG            LWIP_DBG_OFF
 #define TCP_RTO_DEBUG               LWIP_DBG_OFF

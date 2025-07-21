@@ -36,7 +36,7 @@ class TimeZone : public HttpClient {
       TaskHandle_t timeZoneTaskHandle;
       TimerHandle_t timeZoneTimer;
 
-      static void parseReply(char *data, size_t len);
+      static void parseReply(http_request_context_t *context, struct pbuf *p);
 
       static void timeZoneTask(void *params);
       static void timerCallback(TimerHandle_t xTimer);

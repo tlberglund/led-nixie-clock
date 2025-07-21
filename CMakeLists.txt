@@ -67,13 +67,19 @@ pico_generate_pio_header(${OUTPUT_NAME} ${CMAKE_CURRENT_LIST_DIR}/src/apa102.pio
 target_include_directories(${OUTPUT_NAME} PUBLIC 
     ${FREERTOS_KERNEL_PATH}/include 
     ${PICO_SDK_PATH}/lib/mbedtls/include
+    ${PICO_SDK_PATH}/lib/lwip/src/apps/altcp_tls
     include/ 
 )
 
 # Rage
 set_source_files_properties(
+    ${PICO_SDK_PATH}/lib/lwip/src/apps/altcp_tls/altcp_tls_mbedtls.c
+    PROPERTIES COMPILE_OPTIONS "-Wunused-result"
+)
+
+set_source_files_properties(
     ${PICO_SDK_PATH}/lib/lwip/src/apps/http/altcp_proxyconnect.c
-    PROPERTIES COMPILE_FLAGS "-Wno-incompatible-pointer-types"
+    PROPERTIES COMPILE_OPTIONS "-Wno-incompatible-pointer-types"
 )
 
 # This makes printf() work over the USB serial port
@@ -91,7 +97,9 @@ target_link_libraries(${OUTPUT_NAME}
     pico_stdio_usb
     pico_cyw43_arch_lwip_sys_freertos
     pico_lwip_http
+    pico_lwip_mbedtls
     pico_mbedtls
+    # pico_altcp_tls_mbedtls
     FreeRTOS-Kernel-Heap4)
 
 

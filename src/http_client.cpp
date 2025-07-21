@@ -4,60 +4,98 @@
 #include <string.h>
 #include <algorithm>
 #include "http_client.h"
+#include "lwip/altcp_tls.h"
+
+
+static struct altcp_pcb *altcp_tls_alloc_sni(void *arg, u8_t ip_type) {
+    assert(arg);
+    http_request_context_t *req = (http_request_context_t *)arg;
+    struct altcp_pcb *pcb = altcp_tls_alloc(req->tls_config, ip_type);
+    if (!pcb) {
+        printf("Failed to allocate PCB\n");
+        return NULL;
+    }
+    mbedtls_ssl_set_hostname((mbedtls_ssl_context *)altcp_tls_context(pcb), req->url_parts.authority);
+    return pcb;
+}
 
 
 HttpClient::HttpClient() : http_connection(nullptr)
 {
-   memset(&connection_settings, 0, sizeof(connection_settings));
-   connection_settings.result_fn = result_callback;
-   connection_settings.headers_done_fn = headers_done_callback;
-   connection_settings.use_proxy = 0;
+   memset(&requestContext, 0, sizeof(requestContext));
+   requestContext.resultCallback = result_callback;
+   requestContext.headerCallback = headers_done_callback;
+   requestContext.receiveCallback = rx_callback;
+   requestContext.settings.use_proxy = 0;
+   requestContext.http_client = this;
 }
 
 
 err_t HttpClient::get(const char *url,
-                      ReceiveCallback on_receive,
-                      HeadersCallback on_headers,
-                      ResultCallback on_result)
+                      body_callback_fn body_callback)
 {
    printf("HttpClient::get() - URL: %s\n", url);
-   if(!parse_url((char *)url, &url_parts))
+   if(!parse_url((char *)url, &requestContext.url_parts))
    {
+      printf("HttpClient::get() - Failed to parse URL: %s\n", url);
       return ERR_ARG;
    }
 
-   print_url(&url_parts); 
-
-   if(url_parts.port_number < 0)
+   if(requestContext.url_parts.port_number < 0)
    {
-      url_parts.port_number = 80;
-      strcpy(url_parts.port, "80");
+      if(strcmp(requestContext.url_parts.scheme, "https") == 0)
+      {
+         printf("HttpClient::get() - No port number specified for scheme '%s', defaulting to 443\n", requestContext.url_parts.scheme);
+         requestContext.url_parts.port_number = 443;
+         strcpy(requestContext.url_parts.port, "443");
+      }
+      else
+      {
+         printf("HttpClient::get() - No port number specified for scheme '%s', defaulting to 80\n", requestContext.url_parts.scheme);
+         requestContext.url_parts.port_number = 80;
+         strcpy(requestContext.url_parts.port, "80");
+      }
    }
 
-   callback_data.client = this;
-   callback_data.receive_cb = on_receive;
-   callback_data.headers_cb = on_headers;
-   callback_data.result_cb = on_result;
+   // print_url(&url_parts);
 
-   printf("About to httpc_get_file_dns()\n");
+#if LWIP_ALTCP
+    if (requestContext.tls_config) {
+        if (!requestContext.tls_allocator.alloc) {
+            requestContext.tls_allocator.alloc = altcp_tls_alloc_sni;
+            requestContext.tls_allocator.arg = &requestContext;
+        }
+        requestContext.settings.altcp_allocator = &requestContext.tls_allocator;
+    }
+#else
+    const uint16_t default_port = 80;
+#endif
+    requestContext.complete = false;
+    requestContext.settings.headers_done_fn = requestContext.headerCallback;
+    requestContext.settings.result_fn = requestContext.resultCallback;
+    async_context_acquire_lock_blocking(cyw43_arch_async_context());
+    err_t ret = httpc_get_file_dns(requestContext.url_parts.authority, 
+                                   requestContext.url_parts.port_number, 
+                                   requestContext.url_parts.path, 
+                                   &requestContext.settings,
+                                   requestContext.receiveCallback, 
+                                   &requestContext, 
+                                   NULL);
+    async_context_release_lock(cyw43_arch_async_context());
+    if(ret != ERR_OK) {
+        printf("http request failed: %d", ret);
+    }
+    return ret;
 
-   err_t err = httpc_get_file_dns(url_parts.authority,
-                                  url_parts.port_number,
-                                  url_parts.path,
-                                  &connection_settings,
-                                  rx_callback,
-                                  &callback_data,
-                                  &http_connection);
-
-   printf("err=%d\n", err);   
-   return err;
+   printf("err=%d\n", ret);   
+   return ret;
 }
 
 
 err_t HttpClient::rx_callback(void *arg, struct altcp_pcb *conn, struct pbuf *p, err_t err)
 {
-   CallbackData *data = static_cast<CallbackData *>(arg);
-   if(!data || !data->client)
+   http_request_context_t *context = static_cast<http_request_context_t *>(arg);
+   if(!context)
    {
       if(p != NULL) {
          pbuf_free(p);
@@ -75,19 +113,19 @@ err_t HttpClient::rx_callback(void *arg, struct altcp_pcb *conn, struct pbuf *p,
 
    if(p != NULL)
    {
-      if(data->receive_cb)
+      if(context->receiveCallback)
       {
-         char *buffer = (char *)bufferPool().allocate();
+         // char *buffer = (char *)bufferPool().allocate();
 
-         u16_t copy_len = std::min((size_t)p->tot_len, bufferPool().get_buffer_size() - 1);
-         pbuf_copy_partial(p, buffer, copy_len, 0);
-         buffer[copy_len] = '\0';
+         // u16_t copy_len = std::min((size_t)p->tot_len, bufferPool().get_buffer_size() - 1);
+         // pbuf_copy_partial(p, buffer, copy_len, 0);
+         // buffer[copy_len] = '\0';
 
-         printf("%s\n", buffer);
+         printf("%s\n", p->payload);
 
-         data->receive_cb(buffer, p->tot_len);
+         ((HttpClient *)context->http_client)->bodyCallback(context, p);
 
-         bufferPool().deallocate(buffer);
+         // bufferPool().deallocate(buffer);
       }
       pbuf_free(p);
    }
@@ -101,13 +139,13 @@ err_t HttpClient::headers_done_callback(httpc_state_t *connection,
                                         u16_t hdr_len, 
                                         u32_t content_len)
 {
-   CallbackData *data = static_cast<CallbackData *>(arg);
-   if(!data || !data->client)
+   http_request_context_t *context = static_cast<http_request_context_t *>(arg);
+   if(!context)
    {
       return ERR_OK;
    }
 
-   if(hdr != NULL && data->headers_cb)
+   if(hdr != NULL && context->headerCallback)
    {
       char *headers = (char *)bufferPool().allocate();
       u16_t copy_len = std::min((size_t)(hdr_len + 1), bufferPool().get_buffer_size());
@@ -115,7 +153,7 @@ err_t HttpClient::headers_done_callback(httpc_state_t *connection,
       pbuf_copy_partial(hdr, headers, copy_len, 0);
       headers[copy_len] = '\0';
 
-      data->headers_cb(headers, copy_len, content_len);
+      // context->headerCallback(headers, copy_len, content_len);
 
       bufferPool().deallocate(headers);
    }
@@ -129,14 +167,14 @@ void HttpClient::result_callback(void *arg,
                                  u32_t srv_res, 
                                  err_t err)
 {
-   CallbackData *data = static_cast<CallbackData *>(arg);
-   if(!data || !data->client)
+   http_request_context_t *context = static_cast<http_request_context_t *>(arg);
+   if(!context)
    {
       return;
    }
 
-   if(data->result_cb)
+   if(context->resultCallback)
    {
-      data->result_cb(httpc_result, rx_content_len, srv_res);
+      // context->resultCallback(httpc_result, rx_content_len, srv_res);
    }
 }

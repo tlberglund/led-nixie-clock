@@ -22,8 +22,11 @@ void TimeZone::requestTimeZone() {
 }
 
 
-void TimeZone::parseReply(char *data, size_t len) {
+void TimeZone::parseReply(http_request_context_t *context, struct pbuf *p) {
    TimeZone &tz = TimeZone::getInstance();
+
+   char *data = (char *)p->payload;
+   size_t len = p->len;
 
    printf("TimeZone::parseReply() - data=%s, len=%zu\n", data, len);
 

@@ -95,6 +95,7 @@ void TimeZone::timeZoneTask(void *params) {
 
    for(;;) {
       ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      printf("TimeZone::timeZoneTask() - TIMER CALLBACK - requesting timezone\n");
       tz.requestTimeZone();
    }
 }

@@ -16,6 +16,13 @@ extern "C" {
 }
 
 #define MAX_HTTP_RESPONSE_SIZE 4096
+#define MAX_REQUEST_BUFFER_SIZE 512
+
+static const u8_t CA_root_cert[] = {
+   0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
+};
+
+#define CA_ROOT_CERT_LEN (sizeof(CA_root_cert) / sizeof(CA_root_cert[0]))
 
 
 // typedef err_t (*httpc_headers_done_fn)(httpc_state_t *connection, void *arg, struct pbuf *hdr, u16_t hdr_len, u32_t content_len);
@@ -41,9 +48,11 @@ typedef struct http_request_context {
     altcp_allocator_t tls_allocator;
 #endif
 
+   u16_t acknowledged_len;
+
    httpc_connection_t settings;
 
-   bool complete;
+   bool connected;
 
    //Overall result of http request, only valid when complete is set
    httpc_result_t result;
@@ -60,6 +69,9 @@ class HttpClient {
       http_request_context_t requestContext;
       httpc_state_t *http_connection;
       body_callback_fn bodyCallback;
+
+      u8_t requestBuffer[MAX_REQUEST_BUFFER_SIZE];
+      ip_addr_t ip_addr;
 
       static err_t rx_callback(void *arg, 
                                struct altcp_pcb *conn, 
@@ -82,6 +94,18 @@ class HttpClient {
          static BufferPool instance(3, TCP_MSS);
          return instance;
       }
+
+      err_t make_https_request();
+      bool resolve_hostname(const char *hostname, ip_addr_t *ipaddr);
+      static void dns_callback(const char *name, const ip_addr_t *resolved, void *ipaddr);
+      bool tls_connect(ip_addr_t *ipaddr, struct altcp_pcb **pcb);
+      static void altcp_free_config(struct altcp_tls_config *config);
+      static void altcp_free_pcb(struct altcp_pcb* pcb);
+      static void callback_altcp_err(void *arg, err_t err);
+      static err_t callback_altcp_sent(void *arg, struct altcp_pcb *pcb, u16_t len);
+      static err_t callback_altcp_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *buf, err_t err);
+      static err_t callback_altcp_connect(void *arg, struct altcp_pcb *pcb, err_t err);
+      bool send_request(struct altcp_pcb *pcb);
 
    public:
       HttpClient();

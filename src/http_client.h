@@ -95,17 +95,19 @@ class HttpClient {
          return instance;
       }
 
-      err_t make_https_request();
-      bool resolve_hostname(const char *hostname, ip_addr_t *ipaddr);
       static void dns_callback(const char *name, const ip_addr_t *resolved, void *ipaddr);
-      bool tls_connect(ip_addr_t *ipaddr, struct altcp_pcb **pcb);
       static void altcp_free_config(struct altcp_tls_config *config);
       static void altcp_free_pcb(struct altcp_pcb* pcb);
       static void callback_altcp_err(void *arg, err_t err);
       static err_t callback_altcp_sent(void *arg, struct altcp_pcb *pcb, u16_t len);
       static err_t callback_altcp_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *buf, err_t err);
       static err_t callback_altcp_connect(void *arg, struct altcp_pcb *pcb, err_t err);
-      bool send_request(struct altcp_pcb *pcb);
+      static err_t callback_altcp_poll(void *arg, struct altcp_pcb *pcb);
+
+      err_t make_https_request();
+      bool resolve_hostname(const char *hostname, ip_addr_t *ipaddr);
+      bool tls_connect(struct altcp_pcb **pcb);
+      bool send_get_request(struct altcp_pcb *pcb);
 
    public:
       HttpClient();

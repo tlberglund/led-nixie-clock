@@ -48,7 +48,7 @@ pico_sdk_init()
 
 add_executable(${OUTPUT_NAME}
     src/main.cpp
-    src/pico_led.c
+    # src/pico_led.c
     src/apa102.cpp
     src/clock.cpp
     src/wifi.cpp
@@ -65,10 +65,10 @@ add_executable(${OUTPUT_NAME}
 pico_generate_pio_header(${OUTPUT_NAME} ${CMAKE_CURRENT_LIST_DIR}/src/apa102.pio)
 
 target_include_directories(${OUTPUT_NAME} PUBLIC 
+    include/ 
     ${FREERTOS_KERNEL_PATH}/include 
     ${PICO_SDK_PATH}/lib/mbedtls/include
     ${PICO_SDK_PATH}/lib/lwip/src/apps/altcp_tls
-    include/ 
 )
 
 # Rage

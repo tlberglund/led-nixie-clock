@@ -9,6 +9,7 @@
 #include "lwip/dns.h"
 #include "lwip/ip_addr.h"
 #include "altcp_tls_mbedtls_structs.h"
+#include "mbedtls/debug.h"
 
 
 // static struct altcp_pcb *altcp_tls_alloc_sni(void *arg, u8_t ip_type) {
@@ -157,29 +158,34 @@ void HttpClient::altcp_free_pcb(struct altcp_pcb *pcb) {
     }
 }
 
+
+void HttpClient::altcp_free_config(struct altcp_tls_config *config) {
+   cyw43_arch_lwip_begin();
+   altcp_tls_free_config(config);
+   cyw43_arch_lwip_end();
+}
+
+
 void HttpClient::callback_altcp_err(void *arg, err_t err) {
+   printf("HttpClient::callback_altcp_err() - arg=%p, err=%d (%s)\n", arg, err, lwip_strerr(-err));
    if(((http_request_context_t *)arg)->tls_config) {
       altcp_free_config(((http_request_context_t *)arg)->tls_config);
    }
 }
 
 
-void HttpClient::altcp_free_config(struct altcp_tls_config *config) {
-    cyw43_arch_lwip_begin();
-    altcp_tls_free_config(config);
-    cyw43_arch_lwip_end();
-}
-
-
 err_t HttpClient::callback_altcp_sent(void *arg, struct altcp_pcb *pcb, u16_t len) {
-    ((http_request_context_t *)arg)->acknowledged_len = len;
-    return ERR_OK;
+   printf("HttpClient::callback_altcp_sent() - pcb=%p, len=%d\n", pcb, len);
+   ((http_request_context_t *)arg)->acknowledged_len = len;
+   return ERR_OK;
 }
 
 
 
 // TCP + TLS data reception callback
 err_t HttpClient::callback_altcp_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *buf, err_t err) {
+
+   printf("HttpClient::callback_altcp_recv() - pcb=%p, buf=%p, err=%d\n", pcb, buf, err);
 
    struct pbuf *head = buf;
 
@@ -227,10 +233,19 @@ err_t HttpClient::callback_altcp_connect(void *arg, struct altcp_pcb *pcb, err_t
 }
 
 
-bool HttpClient::tls_connect(ip_addr_t *ipaddr, struct altcp_pcb **pcb) {
+err_t HttpClient::callback_altcp_poll(void *arg, struct altcp_pcb *pcb) {
+    // Callback not currently used
+    return ERR_OK;
+}
+
+
+bool HttpClient::tls_connect(struct altcp_pcb **pcb) {
    cyw43_arch_lwip_begin();
-   // struct altcp_tls_config *config = altcp_tls_create_config_client(CA_root_cert, CA_ROOT_CERT_LEN);
+   // LMAO MitM attacks
    struct altcp_tls_config *config = altcp_tls_create_config_client(NULL, 0);
+   // TODO: mbedtls_ssl_conf_dbg();
+   // mbedtls_ssl_conf_dbg(&(config->conf), NULL, stdout);
+   // struct altcp_tls_config *config = altcp_tls_create_config_client(CA_root_cert, CA_ROOT_CERT_LEN);
    cyw43_arch_lwip_end();
 
    if(config == NULL) {
@@ -263,40 +278,25 @@ bool HttpClient::tls_connect(ip_addr_t *ipaddr, struct altcp_pcb **pcb) {
    cyw43_arch_lwip_begin();
    altcp_arg(*pcb, (void *)&requestContext);
    cyw43_arch_lwip_end();
-
-   // Configure connection fatal error callback
    cyw43_arch_lwip_begin();
    altcp_err(*pcb, callback_altcp_err);
    cyw43_arch_lwip_end();
-
-   // Configure idle connection callback (and interval)
-   // cyw43_arch_lwip_begin();
-   // altcp_poll(
-   //    *pcb,
-   //    callback_altcp_poll,
-   //    PICOHTTPS_ALTCP_IDLE_POLL_INTERVAL
-   // );
-   // cyw43_arch_lwip_end();
-
-   // Configure data acknowledge callback
+   cyw43_arch_lwip_begin();
+   altcp_poll(*pcb, callback_altcp_poll, 100);
+   cyw43_arch_lwip_end();
    cyw43_arch_lwip_begin();
    altcp_sent(*pcb, callback_altcp_sent);
    cyw43_arch_lwip_end();
-
-   // Configure data reception callback
    cyw43_arch_lwip_begin();
    altcp_recv(*pcb, callback_altcp_recv);
    cyw43_arch_lwip_end();
 
+   printf("HttpClient::tls_connect() - ABOUT TO SEND SYN to port %d\n", requestContext.url_parts.port_number);
    // Send connection request (SYN)
    cyw43_arch_lwip_begin();
-   err_t lwip_err = altcp_connect(
-      *pcb,
-      ipaddr,
-      LWIP_IANA_PORT_HTTPS,
-      callback_altcp_connect
-   );
+   err_t lwip_err = altcp_connect(*pcb, &ip_addr, requestContext.url_parts.port_number, callback_altcp_connect);
    cyw43_arch_lwip_end();
+   printf("HttpClient::tls_connect() - SYN sent, lwip_err=%d\n", lwip_err);
 
    // Connection request sent
    if(lwip_err == ERR_OK) {
@@ -307,12 +307,13 @@ bool HttpClient::tls_connect(ip_addr_t *ipaddr, struct altcp_pcb **pcb) {
       //  callback_altcp_connect.
       //
       while(!(requestContext.connected)) {
-         sleep_ms(100);
+         // printf("HttpClient::tls_connect() - WAITING FOR CONNECTION\n");
+         vTaskDelay(pdMS_TO_TICKS(25));
       }
+      printf("HttpClient::tls_connect() - CONNECTION MADE\n");
 
    }
    else {
-
       // Free allocated resources
       altcp_free_pcb(*pcb);
       altcp_free_config(config);
@@ -324,7 +325,7 @@ bool HttpClient::tls_connect(ip_addr_t *ipaddr, struct altcp_pcb **pcb) {
 }
 
 
-bool HttpClient::send_request(struct altcp_pcb *pcb) {
+bool HttpClient::send_get_request(struct altcp_pcb *pcb) {
    int request_len;
 
    request_len = snprintf((char *)requestBuffer, MAX_REQUEST_BUFFER_SIZE, "GET %s HTTP/1.1\r\nHost: %s \r\n\r\n",
@@ -371,13 +372,11 @@ bool HttpClient::send_request(struct altcp_pcb *pcb) {
 }
 
 
-
 err_t HttpClient::make_https_request()
 {
    printf("HttpClient::make_https_request()\n");
-
-   // ip_addr_t ipaddr;
-   char* char_ipaddr;
+   char *char_ipaddr;
+#if 1
    printf("make_https_request(): resolving %s\n", requestContext.url_parts.authority);
     if(!resolve_hostname(requestContext.url_parts.authority, &ip_addr)) {
         printf("Failed to resolve %s\n", requestContext.url_parts.authority);
@@ -389,26 +388,28 @@ err_t HttpClient::make_https_request()
    char_ipaddr = ipaddr_ntoa(&ip_addr);
    cyw43_arch_lwip_end();
    printf("make_https_request(): resolved %s to %s\n", requestContext.url_parts.authority, char_ipaddr);
-
-
+#else
+    ip_addr.addr = 52 | 52 << 8 | 192 << 16 | 191 << 24;
+    char_ipaddr = "52.52.192.191";
+#endif
 
    // Establish TCP + TLS connection with server
 #ifdef MBEDTLS_DEBUG_C
-   mbedtls_debug_set_threshold(PICOHTTPS_MBEDTLS_DEBUG_LEVEL);
+   mbedtls_debug_set_threshold(3);
 #endif
 
    struct altcp_pcb *pcb = NULL;
    printf("Connecting to %s://%s:%d\n", requestContext.url_parts.scheme, char_ipaddr, requestContext.url_parts.port_number);
-   if(!tls_connect(&ip_addr, &pcb)) {
-      printf("Failed to connect to https://%s:%d\n", char_ipaddr, requestContext.url_parts.port_number);
+   if(!tls_connect(&pcb)) {
+      printf("FAILED TO CONNECT to https://%s:%d\n", char_ipaddr, requestContext.url_parts.port_number);
       return HTTPC_RESULT_ERR_CONNECT;
    }
    printf("CONNECTED\n");
 
    // Send HTTP request to server
    printf("Sending request\n");
-   if(!send_request(pcb)){
-      printf("Failed to send request\n");
+   if(!send_get_request(pcb)) {
+      printf("Failed to send GET request\n");
       altcp_free_config(((http_request_context_t *)(pcb->arg))->tls_config);
       altcp_free_pcb(pcb);
       return HTTPC_RESULT_ERR_CLOSED;

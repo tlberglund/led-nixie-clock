@@ -1,15 +1,14 @@
 #ifndef _LWIPOPTS_H
 #define _LWIPOPTS_H
 
-
 #include "pico/stdlib.h"
 
-#define TCPIP_THREAD_PRIO   2
-#define TCPIP_THREAD_STACKSIZE 2048
-#define DEFAULT_THREAD_STACKSIZE 1024
-#define DEFAULT_RAW_RECVMBOX_SIZE 8
-#define TCPIP_MBOX_SIZE 8
-#define LWIP_TIMEVAL_PRIVATE 0
+#define TCPIP_THREAD_PRIO           2
+#define TCPIP_THREAD_STACKSIZE      2048
+#define DEFAULT_THREAD_STACKSIZE    1024
+#define DEFAULT_RAW_RECVMBOX_SIZE   8
+#define TCPIP_MBOX_SIZE             8
+#define LWIP_TIMEVAL_PRIVATE        0
 
 #define LWIP_SOCKET                 1
 
@@ -37,7 +36,6 @@
 #define SYS_STATS                   0
 #define MEMP_STATS                  0
 #define LINK_STATS                  0
-// #define ETH_PAD_SIZE                2
 #define LWIP_CHKSUM_ALGORITHM       3
 #define LWIP_DHCP                   1
 #define LWIP_IPV4                   1
@@ -58,9 +56,7 @@
 
 #define ALTCP_MBEDTLS_AUTHMODE      MBEDTLS_SSL_VERIFY_REQUIRED
 
-
 #define SYS_LIGHTWEIGHT_PROT        1
-
 
 
 // #ifndef NDEBUG
@@ -91,8 +87,8 @@
 #define IP_DEBUG                    LWIP_DBG_OFF
 #define IP_REASS_DEBUG              LWIP_DBG_OFF
 #define RAW_DEBUG                   LWIP_DBG_OFF
-#define MEM_DEBUG                   LWIP_DBG_ON
-#define MEMP_DEBUG                  LWIP_DBG_ON
+#define MEM_DEBUG                   LWIP_DBG_OFF
+#define MEMP_DEBUG                  LWIP_DBG_OFF
 #define SYS_DEBUG                   LWIP_DBG_OFF
 #define TCP_DEBUG                   LWIP_DBG_ON
 #define TCP_INPUT_DEBUG             LWIP_DBG_OFF
@@ -107,9 +103,9 @@
 #define TCPIP_DEBUG                 LWIP_DBG_OFF
 #define PPP_DEBUG                   LWIP_DBG_OFF
 #define SLIP_DEBUG                  LWIP_DBG_OFF
-#define DHCP_DEBUG                  LWIP_DBG_OFF
+#define DHCP_DEBUG                  LWIP_DBG_ON
 #define SNTP_DEBUG                  LWIP_DBG_OFF
-#define HTTPD_DEBUG                 LWIP_DBG_ON
+#define HTTPD_DEBUG                 LWIP_DBG_OFF
 
 #define DEFAULT_TCP_RECVMBOX_SIZE 128
 

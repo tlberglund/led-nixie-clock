@@ -17,6 +17,7 @@ void TimeZone::requestTimeZone() {
 
    printf("TimeZone::requestTimeZone() - about to take\n");
    xSemaphoreTake(replySemaphore, 0);
+   printf("***********************************************************************************************************\n");
    printf("TimeZone::requestTimeZone() - requesting time zone from %s\n", apiUrl);
    err = get(apiUrl, parseReply);
 }
@@ -88,7 +89,7 @@ void TimeZone::timeZoneTask(void *params) {
    printf("wifi initialized\n");
    tz.requestTimeZone();
    tz.timeZoneTaskHandle = xTaskGetCurrentTaskHandle();
-   tz.timeZoneTimer = xTimerCreate("TimeZoneTimer", pdMS_TO_TICKS(1000 * 5), pdTRUE, 0, timerCallback);
+   tz.timeZoneTimer = xTimerCreate("TimeZoneTimer", pdMS_TO_TICKS(1000 * 600), pdTRUE, 0, timerCallback);
    if(tz.timeZoneTimer != NULL) {
       xTimerStart(tz.timeZoneTimer, 0);
    }

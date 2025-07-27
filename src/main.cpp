@@ -1,24 +1,30 @@
 #include <cstdio>
-#include "pico/stdlib.h"
+#include <cstdlib>
 #include "secrets.h"
-#include "wifi.h"
-#include "network_time.h"
 #include "apa102.h"
 #include "clock.h"
 #include "strip_config.h"
 #include "push_buttons.h"
 #include "pico/aon_timer.h"
+
+#define WIFI
+#ifdef WIFI 
+#include "wifi.h"
+#include "network_time.h"
 #include "time_zone.h"
+#endif
 
 extern "C" {
-    #include "pico/cyw43_arch.h"
-    #include "FreeRTOSConfig.h"
-    #include "FreeRTOS.h"
-    #include "task.h"
-    #include "queue.h"
-    #include "timers.h"
-    #include "hardware/adc.h"
-    #include "hardware/gpio.h"
+   #include "pico.h"
+   #include "pico/stdlib.h"
+   #include "pico/cyw43_arch.h"
+   #include "FreeRTOSConfig.h"
+   #include "FreeRTOS.h"
+   #include "task.h"
+   #include "queue.h"
+   #include "timers.h"
+   #include "hardware/adc.h"
+   #include "hardware/gpio.h"
 }
 
 config_t config = {
@@ -39,10 +45,13 @@ config_t config = {
 };
 
 
+#ifdef WIFI 
 WifiConnection& wifi = WifiConnection::getInstance();
 NetworkTime& network_time = NetworkTime::getInstance();
-Clock nixie_clock;
 TimeZone &time_zone = TimeZone::getInstance();
+#endif
+
+Clock nixie_clock;
 
 PushButtons& buttons = PushButtons::getInstance();
 PushButton lampTest(20, true, BUTTON_PULL_DOWN); 
@@ -115,8 +124,10 @@ void vStatusTimerCallback(TimerHandle_t xTimer) {
 
 
 void status_task(void *pvParameters) {
+#ifdef WIFI
    printf("STATUS TASK STARTED\n");
    WifiConnection *wifi = (WifiConnection *)pvParameters;
+#endif
 
    adc_init();
    adc_gpio_init(GPIO_CURRENT_SENSOR);
@@ -154,6 +165,7 @@ void status_task(void *pvParameters) {
       uint8_t current_brightness = (current_draw / MAX_CURRENT) * 31;
       status_leds.set_led(STATUS_LED_CURRENT, current_red, 0, 0, current_brightness);
 
+#ifdef WIFI
       switch(wifi->get_state()) {
          case ConnectionState::INIT:
             // dim orange
@@ -191,6 +203,7 @@ void status_task(void *pvParameters) {
       }
 
       status_leds.update_strip();
+#endif
           
       network_blink_index++;
       if(network_blink_index >= BLINK_SAMPLES) {
@@ -202,7 +215,9 @@ void status_task(void *pvParameters) {
 
 void clock_task(void *pvParameters) {
    struct tm currentTime;
+#ifdef WIFI
    WifiConnection *wifi = (WifiConnection *)pvParameters;
+#endif
 
    printf("LED TASK STARTED, NOT WAITING FOR WIFI\n");
 
@@ -300,6 +315,7 @@ void clock_task(void *pvParameters) {
 
 
 void launch() {
+#ifdef WIFI
    wifi.set_ssid(WIFI_SSID);
    wifi.set_password(WIFI_PASSWORD);
 
@@ -307,11 +323,11 @@ void launch() {
    printf("STARTING CYW43/WIFI INITIALIZATION\n");
    wifi.init();
 
-   printf("STARTING NTP SYNC\n");
+   // printf("STARTING NTP SYNC\n");
    // network_time.set_timezone(0, config.tz_offset_minutes);
    // network_time.set_timezone("America/Los_Angeles");
-   network_time.set_wifi_connection(&wifi);
-   network_time.init();
+   // network_time.set_wifi_connection(&wifi);
+   // network_time.init();
 
    // xTaskCreate(clock_task, "LED Data Task", 1024, &wifi, 1, &led_task_handle);
    // xTaskCreate(status_task, "Status Task", 1024, &wifi, 0, NULL);
@@ -319,6 +335,7 @@ void launch() {
    time_zone.set_wifi_connection(&wifi);
    time_zone.init();
    printf("TimeZone initialized\n");
+#endif
 
 
    buttons.init();

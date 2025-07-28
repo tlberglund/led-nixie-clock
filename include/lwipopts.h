@@ -4,8 +4,8 @@
 #include "pico/stdlib.h"
 
 #define TCPIP_THREAD_PRIO           2
-#define TCPIP_THREAD_STACKSIZE      2048
-#define DEFAULT_THREAD_STACKSIZE    1024
+#define TCPIP_THREAD_STACKSIZE      4096
+#define DEFAULT_THREAD_STACKSIZE    2048
 #define DEFAULT_RAW_RECVMBOX_SIZE   8
 #define TCPIP_MBOX_SIZE             8
 #define LWIP_TIMEVAL_PRIVATE        0
@@ -54,7 +54,8 @@
 #define LWIP_NETIF_API              1
 #define LWIP_CALLBACK_API           1
 
-#define ALTCP_MBEDTLS_AUTHMODE      MBEDTLS_SSL_VERIFY_REQUIRED
+// We are not storing a root CA chain in flash, so LMAO MitM attacks
+#define ALTCP_MBEDTLS_AUTHMODE      MBEDTLS_SSL_VERIFY_OPTIONAL
 
 #define SYS_LIGHTWEIGHT_PROT        1
 
@@ -90,7 +91,7 @@
 #define MEM_DEBUG                   LWIP_DBG_OFF
 #define MEMP_DEBUG                  LWIP_DBG_OFF
 #define SYS_DEBUG                   LWIP_DBG_OFF
-#define TCP_DEBUG                   LWIP_DBG_ON
+#define TCP_DEBUG                   LWIP_DBG_OFF
 #define TCP_INPUT_DEBUG             LWIP_DBG_OFF
 #define TCP_OUTPUT_DEBUG            LWIP_DBG_OFF
 #define TCP_RTO_DEBUG               LWIP_DBG_OFF
@@ -103,7 +104,7 @@
 #define TCPIP_DEBUG                 LWIP_DBG_OFF
 #define PPP_DEBUG                   LWIP_DBG_OFF
 #define SLIP_DEBUG                  LWIP_DBG_OFF
-#define DHCP_DEBUG                  LWIP_DBG_ON
+#define DHCP_DEBUG                  LWIP_DBG_OFF
 #define SNTP_DEBUG                  LWIP_DBG_OFF
 #define HTTPD_DEBUG                 LWIP_DBG_OFF
 

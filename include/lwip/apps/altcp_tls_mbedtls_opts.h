@@ -53,7 +53,7 @@
 
 /** Configure debug level of this file */
 #ifndef ALTCP_MBEDTLS_DEBUG
-#define ALTCP_MBEDTLS_DEBUG                           LWIP_DBG_OFF
+#define ALTCP_MBEDTLS_DEBUG                           LWIP_DBG_ON
 #endif
 
 /** Configure lwIP debug level of the mbedTLS library */

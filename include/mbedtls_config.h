@@ -144,7 +144,7 @@
 #define MBEDTLS_PLATFORM_C                          // libc re-assignment
 
 // Debug
-#define MBEDTLS_DEBUG_C                           // Debug functions
-#define MBEDTLS_SSL_DEBUG_ALL                     // Debug output
+#undef MBEDTLS_DEBUG_C                           // Debug functions
+#undef MBEDTLS_SSL_DEBUG_ALL                     // Debug output
 
 #endif

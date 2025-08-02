@@ -12,27 +12,14 @@
 #include "mbedtls/debug.h"
 
 
-// static struct altcp_pcb *altcp_tls_alloc_sni(void *arg, u8_t ip_type) {
-//    assert(arg);
-//    http_request_context_t *req = (http_request_context_t *)arg;
-//    struct altcp_pcb *pcb = altcp_tls_alloc(req->tls_config, ip_type);
-//    if(!pcb) {
-//       printf("Failed to allocate PCB\n");
-//       return NULL;
-//    }
-//    mbedtls_ssl_set_hostname((mbedtls_ssl_context *)altcp_tls_context(pcb), req->url_parts.authority);
-//    return pcb;
-// }
-
-
 HttpClient::HttpClient() : http_connection(nullptr)
 {
-   memset(&requestContext, 0, sizeof(requestContext));
-   requestContext.resultCallback = result_callback;
-   requestContext.headerCallback = headers_done_callback;
-   requestContext.receiveCallback = rx_callback;
-   requestContext.settings.use_proxy = 0;
-   requestContext.http_client = this;
+   memset(&request_context, 0, sizeof(request_context));
+   request_context.resultCallback = result_callback;
+   request_context.headerCallback = headers_done_callback;
+   request_context.receiveCallback = rx_callback;
+   request_context.settings.use_proxy = 0;
+   request_context.http_client = this;
 }
 
 
@@ -40,7 +27,8 @@ err_t HttpClient::get(const char *url,
                       body_callback_fn body_callback)
 {
    printf("HttpClient::get() - URL: %s\n", url);
-   if(!parse_url((char *)url, &requestContext.url_parts))
+
+   if(!parse_url((char *)url, &request_context.url_parts))
    {
       printf("HttpClient::get() - Failed to parse URL: %s\n", url);
       return ERR_ARG;
@@ -48,42 +36,40 @@ err_t HttpClient::get(const char *url,
 
    set_body_callback(body_callback);
 
-   if(requestContext.url_parts.port_number < 0)
+   if(request_context.url_parts.port_number < 0)
    {
-      if(strcmp(requestContext.url_parts.scheme, "https") == 0)
+      if(strcmp(request_context.url_parts.scheme, "https") == 0)
       {
-         printf("HttpClient::get() - No port number specified for scheme '%s', defaulting to 443\n", requestContext.url_parts.scheme);
-         requestContext.url_parts.port_number = 443;
-         strcpy(requestContext.url_parts.port, "443");
+         printf("HttpClient::get() - No port number specified for scheme '%s', defaulting to 443\n", request_context.url_parts.scheme);
+         request_context.url_parts.port_number = 443;
       }
       else
       {
-         printf("HttpClient::get() - No port number specified for scheme '%s', defaulting to 80\n", requestContext.url_parts.scheme);
-         requestContext.url_parts.port_number = 80;
-         strcpy(requestContext.url_parts.port, "80");
+         printf("HttpClient::get() - No port number specified for scheme '%s', defaulting to 80\n", request_context.url_parts.scheme);
+         request_context.url_parts.port_number = 80;
       }
    }
 
    // print_url(&url_parts);
 
-   requestContext.connected = false;
-   requestContext.settings.headers_done_fn = requestContext.headerCallback;
-   requestContext.settings.result_fn = requestContext.resultCallback;
-   printf("CALLING httpc_get_file_dns() with requestContext=%p\n", &requestContext);
-   printf("bodyCallback: %p\n", bodyCallback);
+   request_context.connected = false;
+   request_context.settings.headers_done_fn = request_context.headerCallback;
+   request_context.settings.result_fn = request_context.resultCallback;
+   printf("CALLING httpc_get_file_dns() with request_context=%p\n", &request_context);
+   printf("body_callback: %p\n", body_callback);
 
    err_t ret;
-   if(requestContext.url_parts.port_number == 443) {
+   if(request_context.url_parts.port_number == 443) {
       ret = make_https_request();
    }
    else {
       async_context_acquire_lock_blocking(cyw43_arch_async_context());
-      ret = httpc_get_file_dns(requestContext.url_parts.authority, 
-                               requestContext.url_parts.port_number, 
-                               requestContext.url_parts.path, 
-                               &requestContext.settings,
-                               requestContext.receiveCallback, 
-                               &requestContext, 
+      ret = httpc_get_file_dns(request_context.url_parts.authority, 
+                               request_context.url_parts.port_number, 
+                               request_context.url_parts.path, 
+                               &request_context.settings,
+                               request_context.receiveCallback, 
+                               &request_context, 
                                NULL);
       async_context_release_lock(cyw43_arch_async_context());
    }
@@ -92,54 +78,49 @@ err_t HttpClient::get(const char *url,
       printf("http request failed: %d", ret);
    }
    return ret;
-
-   printf("err=%d\n", ret);   
-   return ret;
 }
 
 
-void HttpClient::dns_callback(const char *name, const ip_addr_t *resolved, void *ipaddr) {
+void HttpClient::dns_callback(const char *name, const ip_addr_t *resolved, void *arg) {
+   HttpClient *http_client = static_cast<HttpClient *>(arg);
    if(resolved) {
-      *((ip_addr_t *)ipaddr) = *resolved;
-      // TODO: notify task
+      http_client->ip_addr = *resolved;
+      xTaskNotifyGive(http_client->blockedTaskHandle);
    }
    else {
-      ((ip_addr_t *)ipaddr)->addr = IPADDR_NONE;
+      http_client->ip_addr.addr = IPADDR_NONE;
    }
 }
 
 
-bool HttpClient::resolve_hostname(const char *hostname, ip_addr_t *ipaddr)
+bool HttpClient::resolve_hostname()
 {
-   ipaddr->addr = IPADDR_ANY;
+   ip_addr.addr = IPADDR_ANY;
+   char *hostname = request_context.url_parts.authority;
 
    printf("HttpClient::resolve_hostname(): resolving %s\n", hostname);
    cyw43_arch_lwip_begin();
-   err_t lwip_err = dns_gethostbyname(hostname, ipaddr, dns_callback, ipaddr);
+   err_t lwip_err = dns_gethostbyname(hostname, &ip_addr, dns_callback, this);
    printf("dns_gethostbyname() is back\n");
    cyw43_arch_lwip_end();
 
-   // Poll for DNS resolution :(
-   // TODO: replace with task notification
-   if(lwip_err == ERR_INPROGRESS) {
-      while(ipaddr->addr == IPADDR_ANY) {
-         sleep_ms(10);
-         printf("WAITING FOR DNS RESOLUTION\n");
-      }
-
-      if(ipaddr->addr != IPADDR_NONE) {
-         lwip_err = ERR_OK;
-      }
+   // dns_callback() will unblock us
+   blockedTaskHandle = xTaskGetCurrentTaskHandle();
+   ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(3000));
+   if(ip_addr.addr == IPADDR_ANY || ip_addr.addr == IPADDR_NONE) {
+      printf("HttpClient::resolve_hostname(): DNS resolution failed for %s\n", hostname);
+      return false;
    }
 
    printf("HttpClient::resolve_hostname(): resolved %s to %08x (%d.%d.%d.%d)\n",
-          hostname, ipaddr->addr,
-          (ipaddr->addr & 0xff),
-          (ipaddr->addr >> 8) & 0xff,
-          (ipaddr->addr >> 16) & 0xff,
-          (ipaddr->addr >> 24) & 0xff);
+          hostname, 
+          ip_addr.addr,
+          (ip_addr.addr & 0xff),
+          (ip_addr.addr >> 8) & 0xff,
+          (ip_addr.addr >> 16) & 0xff,
+          (ip_addr.addr >> 24) & 0xff);
    
-   return !((bool)lwip_err);
+   return true;
 }
 
 
@@ -175,8 +156,12 @@ void HttpClient::callback_altcp_err(void *arg, err_t err) {
 
 
 err_t HttpClient::callback_altcp_sent(void *arg, struct altcp_pcb *pcb, u16_t len) {
-   printf("HttpClient::callback_altcp_sent() - pcb=%p, len=%d\n", pcb, len);
-   ((http_request_context_t *)arg)->acknowledged_len = len;
+   printf("HttpClient::callback_altcp_sent() acknowledged %d bytes\n", pcb, len);
+   http_request_context_t *context = static_cast<http_request_context_t *>(arg);
+   HttpClient *http_client = static_cast<HttpClient *>(context->http_client);
+
+   context->acknowledged_len = len;
+   xTaskNotifyGive(http_client->blockedTaskHandle);  
    return ERR_OK;
 }
 
@@ -186,8 +171,6 @@ err_t HttpClient::callback_altcp_sent(void *arg, struct altcp_pcb *pcb, u16_t le
 err_t HttpClient::callback_altcp_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *buf, err_t err) {
 
    printf("HttpClient::callback_altcp_recv() - pcb=%p, buf=%p, err=%d\n", pcb, buf, err);
-
-   struct pbuf *head = buf;
 
    switch(err) {
       case ERR_OK:
@@ -212,14 +195,23 @@ err_t HttpClient::callback_altcp_recv(void *arg, struct altcp_pcb *pcb, struct p
             }
             assert(buf->next == NULL);
 
-            altcp_recved(pcb, head->tot_len);
+            altcp_recved(pcb, buf->tot_len);
+
+            //TODO: figure out if this is headers or body, parse headers(?) and call header handler
+            //TODO: figure out if we're doing chunked, and if so, when we're done
+            //TODO: figure out if we got a content-length and if we're done
+            //TODO: call actual application receive callback
+
+
          }
          // fall through
 
-        case ERR_ABRT:
-            pbuf_free(head);
-            err = ERR_OK;
-            break;
+      case ERR_ABRT:
+         if(buf) {
+            pbuf_free(buf);
+         }
+         err = ERR_OK;
+         break;
    }
 
    // Return error
@@ -228,7 +220,10 @@ err_t HttpClient::callback_altcp_recv(void *arg, struct altcp_pcb *pcb, struct p
 
 
 err_t HttpClient::callback_altcp_connect(void *arg, struct altcp_pcb *pcb, err_t err) {
-   ((http_request_context_t *)arg)->connected = true;
+   http_request_context_t *context = static_cast<http_request_context_t *>(arg);
+   HttpClient *http_client = static_cast<HttpClient *>(context->http_client);
+   context->connected = true;
+   xTaskNotifyGive(http_client->blockedTaskHandle);
    return ERR_OK;
 }
 
@@ -240,17 +235,19 @@ err_t HttpClient::callback_altcp_poll(void *arg, struct altcp_pcb *pcb) {
 
 
 bool HttpClient::tls_connect(struct altcp_pcb **pcb) {
-   cyw43_arch_lwip_begin();
+
    // LMAO MitM attacks
+   cyw43_arch_lwip_begin();
    struct altcp_tls_config *config = altcp_tls_create_config_client(NULL, 0);
-   // TODO: mbedtls_ssl_conf_dbg();
-   // mbedtls_ssl_conf_dbg(&(config->conf), NULL, stdout);
    // struct altcp_tls_config *config = altcp_tls_create_config_client(CA_root_cert, CA_ROOT_CERT_LEN);
    cyw43_arch_lwip_end();
-
    if(config == NULL) {
       return false;
    }
+   request_context.tls_config = config;
+
+   // TODO: mbedtls_ssl_conf_dbg();
+   // mbedtls_ssl_conf_dbg(&(config->conf), NULL, stdout);
 
    cyw43_arch_lwip_begin();
    *pcb = altcp_tls_new(config, IPADDR_TYPE_V4);
@@ -262,10 +259,9 @@ bool HttpClient::tls_connect(struct altcp_pcb **pcb) {
 
     // Configure hostname for Server Name Indication extension
    cyw43_arch_lwip_begin();
-   err_t mbedtls_err = mbedtls_ssl_set_hostname(
-      &(((altcp_mbedtls_state_t *)((*pcb)->state))->ssl_context),
-      requestContext.url_parts.authority
-   );
+   altcp_mbedtls_state_t *mbedtls_state = (altcp_mbedtls_state_t *)((*pcb)->state);
+   err_t mbedtls_err = mbedtls_ssl_set_hostname(&mbedtls_state->ssl_context,
+                                                request_context.url_parts.authority);
    cyw43_arch_lwip_end();
    if(mbedtls_err) {
       altcp_free_pcb(*pcb);
@@ -273,64 +269,68 @@ bool HttpClient::tls_connect(struct altcp_pcb **pcb) {
       return false;
    }
 
-   requestContext.tls_config = config;
-   requestContext.connected = false;
+   // TODO: should be able to remove this; it's already done
+   request_context.connected = false;
+
    cyw43_arch_lwip_begin();
-   altcp_arg(*pcb, (void *)&requestContext);
+   altcp_arg(*pcb, (void *)&request_context);
    cyw43_arch_lwip_end();
+
    cyw43_arch_lwip_begin();
    altcp_err(*pcb, callback_altcp_err);
    cyw43_arch_lwip_end();
+
    cyw43_arch_lwip_begin();
    altcp_poll(*pcb, callback_altcp_poll, 100);
    cyw43_arch_lwip_end();
+
    cyw43_arch_lwip_begin();
    altcp_sent(*pcb, callback_altcp_sent);
    cyw43_arch_lwip_end();
+
    cyw43_arch_lwip_begin();
    altcp_recv(*pcb, callback_altcp_recv);
    cyw43_arch_lwip_end();
 
-   printf("HttpClient::tls_connect() - ABOUT TO SEND SYN to port %d\n", requestContext.url_parts.port_number);
-   // Send connection request (SYN)
    cyw43_arch_lwip_begin();
-   err_t lwip_err = altcp_connect(*pcb, &ip_addr, requestContext.url_parts.port_number, callback_altcp_connect);
+   err_t lwip_err = altcp_connect(*pcb,
+                                  &ip_addr,
+                                  request_context.url_parts.port_number,
+                                  callback_altcp_connect);
    cyw43_arch_lwip_end();
-   printf("HttpClient::tls_connect() - SYN sent, lwip_err=%d\n", lwip_err);
 
-   // Connection request sent
-   if(lwip_err == ERR_OK) {
+   // callback_altcp_connect() will unblock us, or we'll time out
+   blockedTaskHandle = xTaskGetCurrentTaskHandle();
+   ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(5000));
 
-      // Await connection
-      //
-      //  Sucessful connection will be confirmed shortly in
-      //  callback_altcp_connect.
-      //
-      while(!(requestContext.connected)) {
-         // printf("HttpClient::tls_connect() - WAITING FOR CONNECTION\n");
-         vTaskDelay(pdMS_TO_TICKS(25));
-      }
+   if(request_context.connected) {
       printf("HttpClient::tls_connect() - CONNECTION MADE\n");
-
+      return true;
    }
    else {
-      // Free allocated resources
       altcp_free_pcb(*pcb);
       altcp_free_config(config);
+      return false;
    }
-
-    // Return
-    return !((bool)lwip_err);
-
 }
 
 
+static const char *http_get_request_template = 
+   "GET %s HTTP/1.1\r\n"
+   "Host: %s\r\n"
+   "User-Agent: raspberry-pi-pico-http-client\r\n"
+   "Accept: application/json, text/plain\r\n"
+   "Accept-Encoding: identity\r\n"
+   "\r\n";
+
 bool HttpClient::send_get_request(struct altcp_pcb *pcb) {
    int request_len;
-
-   request_len = snprintf((char *)requestBuffer, MAX_REQUEST_BUFFER_SIZE, "GET %s HTTP/1.1\r\nHost: %s \r\n\r\n",
-                          requestContext.url_parts.path,
-                          requestContext.url_parts.authority);
+   
+   request_len = snprintf((char *)requestBuffer, 
+                          MAX_REQUEST_BUFFER_SIZE, 
+                          http_get_request_template,
+                          request_context.url_parts.path,
+                          request_context.url_parts.authority);
 
     // Check send buffer and queue length
     //
@@ -343,32 +343,34 @@ bool HttpClient::send_get_request(struct altcp_pcb *pcb) {
     //  || altcp_sndqueuelen(pcb) > TCP_SND_QUEUELEN
     //) return -1;
 
-    // Write to send buffer
-    cyw43_arch_lwip_begin();
-    err_t lwip_err = altcp_write(pcb, requestBuffer, request_len, 0);
-    cyw43_arch_lwip_end();
+   headers_received = false;
 
-    // Written to send buffer
-    if(lwip_err == ERR_OK) {
-        ((http_request_context_t *)(pcb->arg))->acknowledged_len = 0;
-        cyw43_arch_lwip_begin();
-        lwip_err = altcp_output(pcb);
-        cyw43_arch_lwip_end();
+   // Write to send buffer
+   cyw43_arch_lwip_begin();
+   err_t lwip_err = altcp_write(pcb, requestBuffer, request_len, 0);
+   cyw43_arch_lwip_end();
 
-        if(lwip_err == ERR_OK) {
-            while(((http_request_context_t *)(pcb->arg))->acknowledged_len == 0) {
-               vTaskDelay(pdMS_TO_TICKS(25));
-            }
+   // Written to send buffer
+   if(lwip_err == ERR_OK) {
+      request_context.acknowledged_len = 0;
+      cyw43_arch_lwip_begin();
+      lwip_err = altcp_output(pcb);
+      cyw43_arch_lwip_end();
 
-            if(((http_request_context_t *)(pcb->arg))->acknowledged_len != request_len) {
-               lwip_err = -1;
-            }
-        }
-    }
+      // callback_altcp_sent() will unblock us
+      blockedTaskHandle = xTaskGetCurrentTaskHandle();
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
 
-    // Return
-    return !((bool)lwip_err);
-
+      if(request_context.acknowledged_len != request_len) {
+         return false;
+      }
+      else {
+         return true;
+      }
+   }
+   else {
+      return false;
+   }
 }
 
 
@@ -376,32 +378,27 @@ err_t HttpClient::make_https_request()
 {
    printf("HttpClient::make_https_request()\n");
    char *char_ipaddr;
-#if 1
-   printf("make_https_request(): resolving %s\n", requestContext.url_parts.authority);
-    if(!resolve_hostname(requestContext.url_parts.authority, &ip_addr)) {
-        printf("Failed to resolve %s\n", requestContext.url_parts.authority);
-        return HTTPC_RESULT_ERR_HOSTNAME;
-    }
+
+   printf("make_https_request(): resolving %s\n", request_context.url_parts.authority);
+   if(!resolve_hostname()) {
+      printf("Failed to resolve %s\n", request_context.url_parts.authority);
+      return HTTPC_RESULT_ERR_HOSTNAME;
+   }
 
    // ipaddr_ntoa() is ruthlessly thread-unsafe in every implementation I have ever seen
    cyw43_arch_lwip_begin();
    char_ipaddr = ipaddr_ntoa(&ip_addr);
    cyw43_arch_lwip_end();
-   printf("make_https_request(): resolved %s to %s\n", requestContext.url_parts.authority, char_ipaddr);
-#else
-    ip_addr.addr = 52 | 52 << 8 | 192 << 16 | 191 << 24;
-    char_ipaddr = "52.52.192.191";
-#endif
+   printf("make_https_request(): resolved %s to %s\n", request_context.url_parts.authority, char_ipaddr);
 
-   // Establish TCP + TLS connection with server
 #ifdef MBEDTLS_DEBUG_C
    mbedtls_debug_set_threshold(3);
 #endif
 
    struct altcp_pcb *pcb = NULL;
-   printf("Connecting to %s://%s:%d\n", requestContext.url_parts.scheme, char_ipaddr, requestContext.url_parts.port_number);
+   printf("Connecting to %s://%s:%d\n", request_context.url_parts.scheme, char_ipaddr, request_context.url_parts.port_number);
    if(!tls_connect(&pcb)) {
-      printf("FAILED TO CONNECT to https://%s:%d\n", char_ipaddr, requestContext.url_parts.port_number);
+      printf("FAILED TO CONNECT to https://%s:%d\n", char_ipaddr, request_context.url_parts.port_number);
       return HTTPC_RESULT_ERR_CONNECT;
    }
    printf("CONNECTED\n");
@@ -453,9 +450,9 @@ err_t HttpClient::rx_callback(void *arg, struct altcp_pcb *conn, struct pbuf *p,
 
          printf("HttpClient::rx_callback() - context: %p\n", context);
          printf("HttpClient::rx_callback() - context->http_client: %p\n", context->http_client);
-         printf("HttpClient::rx_callback() - bodyCallback: %p\n", ((HttpClient *)context->http_client)->bodyCallback);
+         printf("HttpClient::rx_callback() - body_callback: %p\n", ((HttpClient *)context->http_client)->body_callback);
 
-         ((HttpClient *)context->http_client)->bodyCallback(context, p);
+         ((HttpClient *)context->http_client)->body_callback(context, p);
 
          // bufferPool().deallocate(buffer);
       }

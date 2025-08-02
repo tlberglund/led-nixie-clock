@@ -1,6 +1,7 @@
 #ifndef __HTTP_CLIENT_H__
 #define __HTTP_CLIENT_H__
 
+#include "FreeRTOS.h"
 #include "pico.h"
 #include "wifi.h"
 #include "lwip/apps/http_client.h"
@@ -35,9 +36,9 @@ typedef struct http_request_context {
    altcp_recv_fn receiveCallback;
    httpc_result_fn resultCallback;
 
-    void *callback_arg;
+   //  void *callback_arg;
 
-    uint16_t port;
+   //  uint16_t port;
 
 #if LWIP_ALTCP && LWIP_ALTCP_TLS
    // TLS configuration, can be null or set to a correctly configured tls configuration.
@@ -45,7 +46,7 @@ typedef struct http_request_context {
    struct altcp_tls_config *tls_config;
 
    // TLS allocator, used internall for setting TLS server name indication
-    altcp_allocator_t tls_allocator;
+   //  altcp_allocator_t tls_allocator;
 #endif
 
    u16_t acknowledged_len;
@@ -66,9 +67,12 @@ typedef void (*body_callback_fn)(http_request_context_t *context, struct pbuf *p
 
 class HttpClient {
    private:
-      http_request_context_t requestContext;
+      http_request_context_t request_context;
       httpc_state_t *http_connection;
-      body_callback_fn bodyCallback;
+      body_callback_fn body_callback;
+      TaskHandle_t blockedTaskHandle;
+      bool headers_received;
+      bool chunking;
 
       u8_t requestBuffer[MAX_REQUEST_BUFFER_SIZE];
       ip_addr_t ip_addr;
@@ -105,22 +109,20 @@ class HttpClient {
       static err_t callback_altcp_poll(void *arg, struct altcp_pcb *pcb);
 
       err_t make_https_request();
-      bool resolve_hostname(const char *hostname, ip_addr_t *ipaddr);
+      bool resolve_hostname();
       bool tls_connect(struct altcp_pcb **pcb);
       bool send_get_request(struct altcp_pcb *pcb);
 
    public:
       HttpClient();
       void set_wifi_connection(WifiConnection *wifi) { this->wifi = wifi; };
-      void set_body_callback(body_callback_fn callback) { this->bodyCallback = callback; }
+      void set_body_callback(body_callback_fn callback) { this->body_callback = callback; }
       err_t get(const char *url,
                 body_callback_fn body_callback);
 
    protected:
       WifiConnection *wifi;
-
       static BufferPool &bufferPool() { return getBufferPool(); }
-
 };
 
 

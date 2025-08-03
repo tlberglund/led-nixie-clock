@@ -144,7 +144,9 @@
 #define MBEDTLS_PLATFORM_C                          // libc re-assignment
 
 // Debug
-#undef MBEDTLS_DEBUG_C                           // Debug functions
-#undef MBEDTLS_SSL_DEBUG_ALL                     // Debug output
+#undef MBEDTLS_DEBUG_C                              // Debug functions
+#undef MBEDTLS_SSL_DEBUG_ALL                        // Debug output
+
+#define MBEDTLS_LMAO_MITM   // Don't expect root certs to exist in the build (thus main-in-the-middle attacks are possible)
 
 #endif

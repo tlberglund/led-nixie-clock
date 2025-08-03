@@ -19,47 +19,31 @@ extern "C" {
 #define MAX_HTTP_RESPONSE_SIZE 4096
 #define MAX_REQUEST_BUFFER_SIZE 512
 
+#ifdef MBEDTLS_LMAO_MITM
 static const u8_t CA_root_cert[] = {
    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
 };
-
 #define CA_ROOT_CERT_LEN (sizeof(CA_root_cert) / sizeof(CA_root_cert[0]))
-
-
-// typedef err_t (*httpc_headers_done_fn)(httpc_state_t *connection, void *arg, struct pbuf *hdr, u16_t hdr_len, u32_t content_len);
+#endif
 
 
 typedef struct http_request_context {
-   URL_PARTS url_parts;
-
    httpc_headers_done_fn headerCallback;
    altcp_recv_fn receiveCallback;
    httpc_result_fn resultCallback;
-
-   //  void *callback_arg;
-
-   //  uint16_t port;
 
 #if LWIP_ALTCP && LWIP_ALTCP_TLS
    // TLS configuration, can be null or set to a correctly configured tls configuration.
    // e.g altcp_tls_create_config_client(NULL, 0) would use https without a certificate
    struct altcp_tls_config *tls_config;
-
-   // TLS allocator, used internall for setting TLS server name indication
-   //  altcp_allocator_t tls_allocator;
 #endif
 
+   URL_PARTS url_parts;
    u16_t acknowledged_len;
-
-   httpc_connection_t settings;
-
    bool connected;
-
-   //Overall result of http request, only valid when complete is set
+   httpc_connection_t settings;
    httpc_result_t result;
-
    void *http_client;
-
 } http_request_context_t;
 
 typedef void (*body_callback_fn)(http_request_context_t *context, struct pbuf *p);
@@ -73,9 +57,12 @@ class HttpClient {
       TaskHandle_t blockedTaskHandle;
       bool headers_received;
       bool chunking;
+      ip_addr_t ip_addr;
+      u8_t *rx_buffer;
+      u16_t rx_bytes_received;
+      static const u16_t max_rx_buffer_size = MAX_HTTP_RESPONSE_SIZE;
 
       u8_t requestBuffer[MAX_REQUEST_BUFFER_SIZE];
-      ip_addr_t ip_addr;
 
       static err_t rx_callback(void *arg, 
                                struct altcp_pcb *conn, 
@@ -95,7 +82,7 @@ class HttpClient {
                                   err_t err);
 
       static BufferPool& getBufferPool() {
-         static BufferPool instance(3, TCP_MSS);
+         static BufferPool instance(2, max_rx_buffer_size);
          return instance;
       }
 
@@ -120,6 +107,11 @@ class HttpClient {
       err_t get(const char *url,
                 body_callback_fn body_callback);
 
+      void free(void *buffer) {
+         if(buffer) {
+            getBufferPool().deallocate(buffer);
+         }
+      }
    protected:
       WifiConnection *wifi;
       static BufferPool &bufferPool() { return getBufferPool(); }

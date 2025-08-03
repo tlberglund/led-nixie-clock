@@ -166,11 +166,12 @@ err_t HttpClient::callback_altcp_sent(void *arg, struct altcp_pcb *pcb, u16_t le
 }
 
 
-
-// TCP + TLS data reception callback
 err_t HttpClient::callback_altcp_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *buf, err_t err) {
 
-   printf("HttpClient::callback_altcp_recv() - pcb=%p, buf=%p, err=%d\n", pcb, buf, err);
+   printf("HttpClient::callback_altcp_recv() - arg=%p, pcb=%p, buf=%p, err=%d\n", arg, pcb, buf, err);
+
+   http_request_context_t *context = static_cast<http_request_context_t *>(arg);
+   HttpClient *http_client = static_cast<HttpClient *>(context->http_client);
 
    switch(err) {
       case ERR_OK:
@@ -182,26 +183,45 @@ err_t HttpClient::callback_altcp_recv(void *arg, struct altcp_pcb *pcb, struct p
          //    * && buf->next != NULL — last buf in chain, more packets in queue
          //
 
+         printf("buf->tot_len=%d, buf->len=%d, buf->next=%p\n", 
+                buf->tot_len, buf->len, buf->next);
+
          if(buf) {
             while(buf->len != buf->tot_len) {
-               for(u16_t i = 0; i < buf->len; i++) {
-                  putchar(((char*)buf->payload)[i]);
+               size_t len = buf->len;
+               if(len + http_client->rx_bytes_received > http_client->max_rx_buffer_size) {
+                  size_t remaining = http_client->max_rx_buffer_size - http_client->rx_bytes_received;
+                  printf("HttpClient::callback_altcp_recv() - buffer overflow, RX %d but only %d left\n", buf->len, remaining);
+                  len = remaining;
                }
+               memcpy(http_client->rx_buffer + http_client->rx_bytes_received, buf->payload, len);
+               http_client->rx_bytes_received += len;
                buf = buf->next;
             }
 
-            for(u16_t i = 0; i < buf->len; i++) {
-               putchar(((char*)buf->payload)[i]);
+            size_t len = buf->len;
+            if(len + http_client->rx_bytes_received > http_client->max_rx_buffer_size) {
+               size_t remaining = http_client->max_rx_buffer_size - http_client->rx_bytes_received;
+               printf("HttpClient::callback_altcp_recv() - buffer overflow, RX %d but only %d left\n", buf->len, remaining);
+               len = remaining;
             }
+            memcpy(http_client->rx_buffer + http_client->rx_bytes_received, buf->payload, len);
+            http_client->rx_bytes_received += len;
+
             assert(buf->next == NULL);
 
+            for(int i = 0; i < http_client->rx_bytes_received; i++) {
+               putchar(((char *)http_client->rx_buffer)[i]);
+            }
+
+            // Handle the rest of the TCP stack
             altcp_recved(pcb, buf->tot_len);
 
             //TODO: figure out if this is headers or body, parse headers(?) and call header handler
             //TODO: figure out if we're doing chunked, and if so, when we're done
             //TODO: figure out if we got a content-length and if we're done
             //TODO: call actual application receive callback
-
+            
 
          }
          // fall through
@@ -235,11 +255,12 @@ err_t HttpClient::callback_altcp_poll(void *arg, struct altcp_pcb *pcb) {
 
 
 bool HttpClient::tls_connect(struct altcp_pcb **pcb) {
-
-   // LMAO MitM attacks
    cyw43_arch_lwip_begin();
+#ifdef MBEDTLS_LMAO_MITM
    struct altcp_tls_config *config = altcp_tls_create_config_client(NULL, 0);
-   // struct altcp_tls_config *config = altcp_tls_create_config_client(CA_root_cert, CA_ROOT_CERT_LEN);
+#else
+   struct altcp_tls_config *config = altcp_tls_create_config_client(CA_root_cert, CA_ROOT_CERT_LEN);
+#endif
    cyw43_arch_lwip_end();
    if(config == NULL) {
       return false;
@@ -308,6 +329,7 @@ bool HttpClient::tls_connect(struct altcp_pcb **pcb) {
       return true;
    }
    else {
+      printf("HttpClient::tls_connect() - CONNECTION FAILED\n");
       altcp_free_pcb(*pcb);
       altcp_free_config(config);
       return false;
@@ -331,6 +353,8 @@ bool HttpClient::send_get_request(struct altcp_pcb *pcb) {
                           http_get_request_template,
                           request_context.url_parts.path,
                           request_context.url_parts.authority);
+
+   printf((char *)requestBuffer);
 
     // Check send buffer and queue length
     //
@@ -382,6 +406,7 @@ err_t HttpClient::make_https_request()
    printf("make_https_request(): resolving %s\n", request_context.url_parts.authority);
    if(!resolve_hostname()) {
       printf("Failed to resolve %s\n", request_context.url_parts.authority);
+      request_context.result = HTTPC_RESULT_ERR_HOSTNAME;
       return HTTPC_RESULT_ERR_HOSTNAME;
    }
 
@@ -399,9 +424,13 @@ err_t HttpClient::make_https_request()
    printf("Connecting to %s://%s:%d\n", request_context.url_parts.scheme, char_ipaddr, request_context.url_parts.port_number);
    if(!tls_connect(&pcb)) {
       printf("FAILED TO CONNECT to https://%s:%d\n", char_ipaddr, request_context.url_parts.port_number);
+      request_context.result = HTTPC_RESULT_ERR_CONNECT;
       return HTTPC_RESULT_ERR_CONNECT;
    }
    printf("CONNECTED\n");
+
+   rx_buffer = (u8_t *)bufferPool().allocate();
+   rx_bytes_received = 0;
 
    // Send HTTP request to server
    printf("Sending request\n");
@@ -409,6 +438,7 @@ err_t HttpClient::make_https_request()
       printf("Failed to send GET request\n");
       altcp_free_config(((http_request_context_t *)(pcb->arg))->tls_config);
       altcp_free_pcb(pcb);
+      request_context.result = HTTPC_RESULT_ERR_CLOSED;
       return HTTPC_RESULT_ERR_CLOSED;
    }
    printf("Request sent\n");
